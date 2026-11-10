@@ -192,14 +192,11 @@ public class SecretSantaBot extends TelegramLongPollingBot {
         }
     }
 
-    public static void main(String[] args) {
-        try {
-            TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-            // Вставте сюди токен вашого бота від @BotFather та username
-            botsApi.registerBot(new SecretSantaBot("YOUR_BOT_TOKEN", "YOUR_BOT_USERNAME"));
-            logger.info("🤖 Бот Таємного Санти успішно запущений і слухає повідомлення!");
-        } catch (TelegramApiException e) {
-            e.printStackTrace();
-        }
+    public static void main(String[] args) throws TelegramApiException {
+        BotConfiguration configuration = BotConfiguration.from(System.getenv());
+        TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
+        botsApi.registerBot(new SecretSantaBot(
+                configuration.botToken(), configuration.botUsername()));
+        logger.info("🤖 Бот Таємного Санти успішно запущений і слухає повідомлення!");
     }
 }

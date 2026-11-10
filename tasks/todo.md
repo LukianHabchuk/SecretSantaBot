@@ -27,24 +27,27 @@ tooling, and project layout in the spec and obtain approval before implementatio
 
 ## Task 2: Establishing Java 27 build and test tooling
 
-**Status:** In progress.
+**Status:** Complete; Telegram network startup will be verified with a test bot
+in Task 7.
 
 **Description:** Configure the project to compile on Java 27, add the approved
 JUnit Jupiter test setup, move code into the standard Maven source layout, and
 provide a safe Maven Exec Plugin launch using external credentials.
 
 **Acceptance criteria:**
-- [ ] Maven compiler configuration targets Java 27 and all current dependencies
+- [x] Maven compiler configuration targets Java 27 and all current dependencies
   compile successfully with the selected JDK.
-- [ ] JUnit Jupiter runs through Maven, and a minimal test proves the setup is
+- [x] JUnit Jupiter runs through Maven, and a minimal test proves the setup is
   active.
-- [ ] A documented run command reads the bot token and username from the agreed
+- [x] A documented run command reads the bot token and username from the agreed
   environment configuration, along with the setup code and encryption key, and
   has no hard-coded real credentials.
 
 **Verification:**
-- [ ] `mvn clean test` passes on Java 27.
-- [ ] The documented command can start the bot with test credentials.
+- [x] `mvn clean package` passes on Java 27.
+- [x] `mvn exec:java` resolves the configured entry point and fails fast without
+  required configuration. A live Telegram connection is deferred to Task 7,
+  which requires a test bot credential configured locally.
 
 **Dependencies:** Task 1
 
