@@ -85,10 +85,10 @@ a complete one-to-one draw that excludes self-assignments and partner pairs.
 **Estimated scope:** Medium
 
 ## Checkpoint: After Tasks 1-3
-- [ ] Resolved spec decisions are approved.
+- [x] Resolved spec decisions are approved.
 - [x] Java 27 compilation and tests pass.
 - [x] Assignment constraints and impossible cases are covered by tests.
-- [ ] Human reviews the foundation before participant-flow work proceeds.
+- [x] Human reviews the foundation before participant-flow work proceeds.
 
 ## Task 4: Implementing organizer claim and exchange setup
 
@@ -97,17 +97,17 @@ persist the organizer ID, open an exchange, and receive a generated invite code
 to share with participants.
 
 **Acceptance criteria:**
-- [ ] Only the first valid claim can establish the organizer; the organizer ID
+- [x] Only the first valid claim can establish the organizer; the organizer ID
   persists across restart and unauthorized organizer commands are rejected.
-- [ ] The organizer can open registration and receive a generated event invite
+- [x] The organizer can open registration and receive a generated event invite
   code privately.
-- [ ] A pre-draw restart loses the active roster and requires a newly opened
+- [x] A pre-draw restart loses the active roster and requires a newly opened
   registration and invite code.
 
 **Verification:**
-- [ ] Tests cover claim-code validation, organizer authorization, and restart.
-- [ ] Tests cover opening registration and invite-code behavior.
-- [ ] `mvn test` and `mvn package` pass.
+- [x] Tests cover claim-code validation, organizer authorization, and restart.
+- [x] Tests cover opening registration and invite-code behavior.
+- [x] `mvn test` and `mvn package` pass.
 
 **Dependencies:** Tasks 1-3
 

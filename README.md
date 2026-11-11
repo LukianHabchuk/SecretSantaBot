@@ -40,6 +40,19 @@ mvn exec:java
 Set `JAVA_HOME` to a JDK 27 installation and ensure its `bin` directory is on
 `PATH` before running Maven.
 
+## Organizer setup
+
+In a private chat with the bot, the organizer sends `/claim <setup code>` once.
+The bot stores only the organizer's Telegram user ID in
+`<user.home>/.secretsanta-telegram-bot/organizer-id`; later claims are rejected. The
+organizer then sends `/open` and receives a new invite code privately. Only the
+organizer can use `/list` or `/run`, and those commands must also be sent in a
+private chat.
+
+The participant roster and active invite code are held in memory. If the bot
+restarts before the draw, registration is closed and the old invite code is
+discarded; the organizer must send `/open` again and share the new code.
+
 ## Project layout
 
 - `src/main/java/com/secretsanta/` — bot and application source
