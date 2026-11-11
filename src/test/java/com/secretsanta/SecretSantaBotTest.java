@@ -10,9 +10,12 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.telegram.telegrambots.meta.api.objects.Chat;
+import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.User;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 
 class SecretSantaBotTest {
     @TempDir
@@ -21,11 +24,11 @@ class SecretSantaBotTest {
     @Test
     void participantRetainsRegistrationDetails() {
         SecretSantaBot.Participant participant =
-                new SecretSantaBot.Participant(123L, "Alex", "pair-1");
+                new SecretSantaBot.Participant(123L, "Alex", 456L);
 
         assertEquals(123L, participant.chatId());
         assertEquals("Alex", participant.name());
-        assertEquals("pair-1", participant.coupleId());
+        assertEquals(456L, participant.partnerId());
     }
 
     @Test
@@ -118,6 +121,118 @@ class SecretSantaBotTest {
         assertTrue(sentMessages.getFirst().text().contains("лише організатору"));
     }
 
+    @Test
+    void participantCanJoinOnlyWithTheCurrentInviteAndCannotDuplicateRegistration()
+            throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+
+        openRegistration(bot, messenger);
+        String inviteCode = inviteCode(messenger.sentMessages.getLast().text());
+        bot.onUpdateReceived(update(
+                201L, 201L, "private", "/join " + inviteCode + " Alex_*[Example]"));
+        bot.onUpdateReceived(update(
+                201L, 201L, "private", "/join " + inviteCode + " Different Name"));
+        bot.onUpdateReceived(update(100L, 100L, "private", "/list"));
+
+        assertTrue(messenger.sentMessages.get(2).text().contains("приєднався"));
+        assertTrue(messenger.sentMessages.get(3).text().contains("вже зареєстрований"));
+        String roster = messenger.sentMessages.getLast().text();
+        assertTrue(roster.contains("Alex\\_\\*\\[Example]"));
+        assertFalse(roster.contains("Different Name"));
+    }
+
+    @Test
+    void invalidInviteDoesNotRegisterParticipant() throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+
+        openRegistration(bot, messenger);
+        bot.onUpdateReceived(update(201L, 201L, "private", "/join invalid-code Alex"));
+        bot.onUpdateReceived(update(100L, 100L, "private", "/list"));
+
+        assertTrue(messenger.sentMessages.get(2).text().contains("недійсний"));
+        assertTrue(messenger.sentMessages.getLast().text().contains("Поки що ніхто"));
+    }
+
+    @Test
+    void participantCannotJoinFromAGroupChat() throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+
+        String inviteCode = openRegistration(bot, messenger);
+        bot.onUpdateReceived(update(-900L, 201L, "group", "/join " + inviteCode + " Alex"));
+        bot.onUpdateReceived(update(100L, 100L, "private", "/list"));
+
+        assertTrue(messenger.sentMessages.get(2).text().contains("лише в особистому чаті"));
+        assertTrue(messenger.sentMessages.getLast().text().contains("Поки що ніхто"));
+    }
+
+    @Test
+    void inlinePairingIsOrganizerOnlyAndReportsReplacedPairs() throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+
+        String inviteCode = openRegistration(bot, messenger);
+        for (long userId = 201L; userId <= 204L; userId++) {
+            bot.onUpdateReceived(update(
+                    userId, userId, "private", "/join " + inviteCode + " Guest " + userId));
+        }
+
+        bot.onUpdateReceived(update(100L, 100L, "private", "/pair"));
+        int sentCount = messenger.sentMessages.size();
+        String firstChoice = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Guest 201");
+        bot.onUpdateReceived(callbackUpdate(firstChoice, 999L, 999L, "unauthorized"));
+        assertEquals(sentCount, messenger.sentMessages.size());
+        assertTrue(messenger.callbackAnswers.getLast().text().contains("лише організатору"));
+
+        bot.onUpdateReceived(callbackUpdate(firstChoice, 100L, 100L, "first-201"));
+        String oldSecondChoice = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Guest 202");
+        assertFalse(messenger.sentMessages.getLast().keyboard().getKeyboard().stream()
+                .flatMap(List::stream)
+                .anyMatch(button -> button.getText().equals("Guest 201")));
+
+        bot.onUpdateReceived(update(100L, 100L, "private", "/pair"));
+        String newFirstChoice = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Guest 203");
+        bot.onUpdateReceived(callbackUpdate(newFirstChoice, 100L, 100L, "first-203"));
+        String currentSecondChoice = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Guest 204");
+        bot.onUpdateReceived(callbackUpdate(oldSecondChoice, 100L, 100L, "stale-second"));
+        assertTrue(messenger.callbackAnswers.getLast().text().contains("Список змінився"));
+        bot.onUpdateReceived(callbackUpdate(currentSecondChoice, 100L, 100L, "second-204"));
+
+        pairParticipants(bot, messenger, "Guest 201", "Guest 202");
+        pairParticipants(bot, messenger, "Guest 203", "Guest 204");
+        pairParticipants(bot, messenger, "Guest 201", "Guest 203");
+
+        String replacement = messenger.sentMessages.getLast().text();
+        assertTrue(replacement.contains("Попередні пари видалено"));
+        assertTrue(replacement.contains("Guest 201 + Guest 202"));
+        assertTrue(replacement.contains("Guest 203 + Guest 204"));
+    }
+
+    @Test
+    void inlinePairingDoesNotExposeButtonsInGroupChats() throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+
+        String inviteCode = openRegistration(bot, messenger);
+        bot.onUpdateReceived(update(201L, 201L, "private", "/join " + inviteCode + " Alex"));
+        bot.onUpdateReceived(update(202L, 202L, "private", "/join " + inviteCode + " Sam"));
+        bot.onUpdateReceived(update(-900L, 100L, "group", "/pair"));
+
+        assertTrue(messenger.sentMessages.getLast().keyboard() == null);
+        assertTrue(messenger.sentMessages.getLast().text().contains("особистому чаті"));
+    }
+
     private OrganizerService createService() {
         return new OrganizerService(new OrganizerStore(dataDirectory), "setup-code");
     }
@@ -128,7 +243,80 @@ class SecretSantaBotTest {
                 "test-token",
                 "test-bot",
                 organizerService,
-                (chatId, text) -> sentMessages.add(new SentMessage(chatId, text)));
+                new TelegramMessenger() {
+                    @Override
+                    public void sendMessage(
+                            long chatId, String text, InlineKeyboardMarkup keyboard) {
+                        sentMessages.add(new SentMessage(chatId, text, keyboard));
+                    }
+
+                    @Override
+                    public void answerCallback(String callbackQueryId, String text) {}
+                });
+    }
+
+    private static SecretSantaBot createBot(
+            OrganizerService organizerService, TestTelegramMessenger messenger) {
+        return new SecretSantaBot("test-token", "test-bot", organizerService, messenger);
+    }
+
+    private static String openRegistration(
+            SecretSantaBot bot, TestTelegramMessenger messenger) {
+        bot.onUpdateReceived(update(100L, 100L, "private", "/claim setup-code"));
+        bot.onUpdateReceived(update(100L, 100L, "private", "/open"));
+        return inviteCode(messenger.sentMessages.getLast().text());
+    }
+
+    private static String inviteCode(String message) {
+        return message.substring(message.lastIndexOf("Запрошувальний код: ")
+                + "Запрошувальний код: ".length());
+    }
+
+    private static void pairParticipants(
+            SecretSantaBot bot,
+            TestTelegramMessenger messenger,
+            String firstName,
+            String secondName) {
+        bot.onUpdateReceived(update(100L, 100L, "private", "/pair"));
+        String firstChoice = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), firstName);
+        bot.onUpdateReceived(callbackUpdate(firstChoice, 100L, 100L, "first-" + firstName));
+
+        String secondChoice = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), secondName);
+        bot.onUpdateReceived(callbackUpdate(secondChoice, 100L, 100L, "second-" + secondName));
+    }
+
+    private static String callbackDataFor(InlineKeyboardMarkup keyboard, String buttonText) {
+        return keyboard.getKeyboard().stream()
+                .flatMap(List::stream)
+                .filter(button -> button.getText().equals(buttonText))
+                .map(InlineKeyboardButton::getCallbackData)
+                .findFirst()
+                .orElseThrow();
+    }
+
+    private static Update callbackUpdate(
+            String callbackData, long userId, long chatId, String callbackId) {
+        User user = new User();
+        user.setId(userId);
+
+        Chat chat = new Chat();
+        chat.setId(chatId);
+        chat.setType(chatId == userId ? "private" : "group");
+
+        Message message = new Message();
+        message.setChat(chat);
+
+        CallbackQuery callback = new CallbackQuery();
+        callback.setId(callbackId);
+        callback.setFrom(user);
+        callback.setMessage(message);
+        callback.setData(callbackData);
+
+        Update update = new Update();
+        update.setCallbackQuery(callback);
+        return update;
     }
 
     private static Update update(long chatId, long userId, String chatType, String text) {
@@ -149,5 +337,22 @@ class SecretSantaBotTest {
         return update;
     }
 
-    private record SentMessage(long chatId, String text) {}
+    private record SentMessage(long chatId, String text, InlineKeyboardMarkup keyboard) {}
+
+    private record CallbackAnswer(String callbackId, String text) {}
+
+    private static final class TestTelegramMessenger implements TelegramMessenger {
+        private final List<SentMessage> sentMessages = new ArrayList<>();
+        private final List<CallbackAnswer> callbackAnswers = new ArrayList<>();
+
+        @Override
+        public void sendMessage(long chatId, String text, InlineKeyboardMarkup keyboard) {
+            sentMessages.add(new SentMessage(chatId, text, keyboard));
+        }
+
+        @Override
+        public void answerCallback(String callbackQueryId, String text) {
+            callbackAnswers.add(new CallbackAnswer(callbackQueryId, text));
+        }
+    }
 }

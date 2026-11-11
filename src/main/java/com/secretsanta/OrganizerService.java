@@ -13,6 +13,12 @@ final class OrganizerService {
         ALREADY_CLAIMED
     }
 
+    enum InviteCodeStatus {
+        VALID,
+        INVALID,
+        CLOSED
+    }
+
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final int INVITE_CODE_BYTES = 24;
 
@@ -59,5 +65,18 @@ final class OrganizerService {
 
     synchronized boolean isRegistrationOpen() {
         return activeInviteCode != null;
+    }
+
+    synchronized InviteCodeStatus validateInviteCode(String providedCode) {
+        if (activeInviteCode == null) {
+            return InviteCodeStatus.CLOSED;
+        }
+        byte[] expected = activeInviteCode.getBytes(StandardCharsets.UTF_8);
+        byte[] provided = providedCode == null
+                ? new byte[0]
+                : providedCode.getBytes(StandardCharsets.UTF_8);
+        return MessageDigest.isEqual(expected, provided)
+                ? InviteCodeStatus.VALID
+                : InviteCodeStatus.INVALID;
     }
 }

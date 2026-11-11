@@ -8,6 +8,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 final class AssignmentGenerator {
@@ -80,7 +81,7 @@ final class AssignmentGenerator {
     private static boolean cannotReceiveFrom(
             SecretSantaBot.Participant giver, SecretSantaBot.Participant receiver) {
         return giver.chatId() == receiver.chatId()
-                || (giver.coupleId() != null
-                        && giver.coupleId().equals(receiver.coupleId()));
+                || Objects.equals(giver.partnerId(), receiver.chatId())
+                || Objects.equals(receiver.partnerId(), giver.chatId());
     }
 }

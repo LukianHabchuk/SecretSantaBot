@@ -127,17 +127,17 @@ invite code, register their display name, and let the organizer create partner
 pairs from the roster.
 
 **Acceptance criteria:**
-- [ ] Only users with the current invite code can join; repeated registration by
+- [x] Only users with the current invite code can join; repeated registration by
   one Telegram user does not create duplicates.
-- [ ] Only the organizer can inspect the roster or manage pairs.
-- [ ] Pairing one participant with another blocks both directions; selecting an
+- [x] Only the organizer can inspect the roster or manage pairs.
+- [x] Pairing one participant with another blocks both directions; selecting an
   already paired participant replaces the previous pair and notifies the
   organizer.
 
 **Verification:**
-- [ ] Tests cover valid/invalid invite codes, duplicate joins, access control,
+- [x] Tests cover valid/invalid invite codes, duplicate joins, access control,
   reciprocal partner restrictions, and pair replacement.
-- [ ] `mvn test` and `mvn package` pass.
+- [x] `mvn test` and `mvn package` pass.
 
 **Dependencies:** Task 4
 

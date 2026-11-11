@@ -16,10 +16,10 @@ class AssignmentGeneratorTest {
     @Test
     void createsCompleteAssignmentsWithoutSelfOrPartnerDraws() {
         List<SecretSantaBot.Participant> participants = List.of(
-                new SecretSantaBot.Participant(1L, "Alex", "pair-1"),
-                new SecretSantaBot.Participant(2L, "Sam", "pair-1"),
-                new SecretSantaBot.Participant(3L, "Jo", "pair-2"),
-                new SecretSantaBot.Participant(4L, "Kim", "pair-2"),
+                new SecretSantaBot.Participant(1L, "Alex", 2L),
+                new SecretSantaBot.Participant(2L, "Sam", 1L),
+                new SecretSantaBot.Participant(3L, "Jo", 4L),
+                new SecretSantaBot.Participant(4L, "Kim", 3L),
                 new SecretSantaBot.Participant(5L, "Lee", null));
 
         for (int attempt = 0; attempt < 20; attempt++) {
@@ -31,8 +31,8 @@ class AssignmentGeneratorTest {
             assertEquals(Set.copyOf(participants), new HashSet<>(assignments.values()));
             assignments.forEach((giver, recipient) -> {
                 assertNotEquals(giver, recipient);
-                assertFalse(giver.coupleId() != null
-                        && giver.coupleId().equals(recipient.coupleId()));
+                assertFalse(giver.partnerId() != null
+                        && giver.partnerId().equals(recipient.chatId()));
             });
         }
     }
@@ -40,8 +40,8 @@ class AssignmentGeneratorTest {
     @Test
     void rejectsAnImpossiblePartnerConfiguration() {
         List<SecretSantaBot.Participant> participants = List.of(
-                new SecretSantaBot.Participant(1L, "Alex", "pair-1"),
-                new SecretSantaBot.Participant(2L, "Sam", "pair-1"));
+                new SecretSantaBot.Participant(1L, "Alex", 2L),
+                new SecretSantaBot.Participant(2L, "Sam", 1L));
 
         IllegalStateException exception = assertThrows(
                 IllegalStateException.class,
