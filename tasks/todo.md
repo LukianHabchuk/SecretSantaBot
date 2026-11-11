@@ -156,20 +156,20 @@ participant's private chat, persist the pending draw encrypted, and apply the
 approved retry policy when Telegram delivery fails.
 
 **Acceptance criteria:**
-- [ ] No result is sent until the complete assignment satisfies all constraints.
-- [ ] Each participant receives only their own recipient; assignment details are
+- [x] No result is sent until the complete assignment satisfies all constraints.
+- [x] Each participant receives only their own recipient; assignment details are
   absent from group messages and logs.
-- [ ] The draw is encrypted with AES-256-GCM before sending, can be recovered
+- [x] The draw is encrypted with AES-256-GCM before sending, can be recovered
   after restart, and is deleted only after all messages succeed.
-- [ ] Failed sends can be retried with the original recipient; no replacement
+- [x] Failed sends can be retried with the original recipient; no replacement
   draw is allowed after any assignment may have been sent.
-- [ ] Delivery success is reported only when all required sends succeed.
+- [x] Delivery success is reported only when all required sends succeed.
 
 **Verification:**
-- [ ] Tests use a controllable Telegram sender to verify private destinations,
+- [x] Tests use a controllable Telegram sender to verify private destinations,
   message contents, partial-delivery recovery, encryption-key failures, and
   deletion after success.
-- [ ] `mvn test` and `mvn package` pass.
+- [x] `mvn clean package` passes on Java 27.
 
 **Dependencies:** Tasks 3-5
 
@@ -182,9 +182,9 @@ approved retry policy when Telegram delivery fails.
 **Estimated scope:** Medium
 
 ## Checkpoint: After Tasks 4-6
-- [ ] Registration and partner constraints are integrated with organizer controls.
-- [ ] Invalid draws send no assignments.
-- [ ] Delivery failures are explicit; the same encrypted draw is recoverable and
+- [x] Registration and partner constraints are integrated with organizer controls.
+- [x] Invalid draws send no assignments.
+- [x] Delivery failures are explicit; the same encrypted draw is recoverable and
   never silently replaced.
 - [ ] Human reviews the complete core flow before final handoff.
 

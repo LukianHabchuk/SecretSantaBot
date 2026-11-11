@@ -106,6 +106,10 @@ final class ExchangeService {
         participants.clear();
     }
 
+    void closeRegistration() {
+        organizerService.closeRegistration();
+    }
+
     private void clearPartner(Long formerPartnerId, long participantId) {
         if (formerPartnerId == null) {
             return;

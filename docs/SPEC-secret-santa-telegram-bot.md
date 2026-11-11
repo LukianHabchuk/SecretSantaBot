@@ -1,8 +1,8 @@
 # Spec: Secret Santa Telegram Bot
 
 ## Status
-Updated draft — decisions are recorded below; requires human approval before
-implementation.
+Approved requirements; core implementation is complete, with live Telegram
+verification still pending.
 
 ## Objective
 Build a simple Telegram bot for one friend group's Christmas gift exchange. Friends

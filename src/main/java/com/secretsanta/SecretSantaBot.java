@@ -14,6 +14,7 @@ import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.security.SecureRandom;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -27,10 +28,17 @@ public class SecretSantaBot extends TelegramLongPollingBot {
     private final OrganizerService organizerService;
     private final ExchangeService exchangeService;
     private final TelegramMessenger telegramMessenger;
+    private final PendingDrawService pendingDrawService;
     private Long pendingPairParticipantId;
+    private String activePairingSessionToken;
+    private static final SecureRandom RANDOM = new SecureRandom();
+    private static final Base64.Encoder TOKEN_ENCODER = Base64.getUrlEncoder().withoutPadding();
 
     SecretSantaBot(
-            String botToken, String botUsername, OrganizerService organizerService) {
+            String botToken,
+            String botUsername,
+            OrganizerService organizerService,
+            PendingDrawStore pendingDrawStore) {
         this.botToken = botToken;
         this.botUsername = botUsername;
         this.organizerService = organizerService;
@@ -49,18 +57,23 @@ public class SecretSantaBot extends TelegramLongPollingBot {
                 answerTelegramCallback(callbackQueryId, text);
             }
         };
+        this.pendingDrawService = new PendingDrawService(
+                pendingDrawStore, exchangeService, organizerService, telegramMessenger);
     }
 
     SecretSantaBot(
             String botToken,
             String botUsername,
             OrganizerService organizerService,
-            TelegramMessenger telegramMessenger) {
+            TelegramMessenger telegramMessenger,
+            PendingDrawStore pendingDrawStore) {
         this.botToken = botToken;
         this.botUsername = botUsername;
         this.organizerService = organizerService;
         this.exchangeService = new ExchangeService(organizerService);
         this.telegramMessenger = Objects.requireNonNull(telegramMessenger);
+        this.pendingDrawService = new PendingDrawService(
+                pendingDrawStore, exchangeService, organizerService, telegramMessenger);
     }
 
     public record Participant(long chatId, String name, Long partnerId) {}
@@ -76,7 +89,7 @@ public class SecretSantaBot extends TelegramLongPollingBot {
     }
 
     @Override
-    public void onUpdateReceived(Update update) {
+    public synchronized void onUpdateReceived(Update update) {
         if (update == null) {
             return;
         }
@@ -153,6 +166,9 @@ public class SecretSantaBot extends TelegramLongPollingBot {
                 try {
                     String inviteCode = openRegistration(userId);
                     sendText(chatId, "✅ Реєстрацію відкрито.\nЗапрошувальний код: " + inviteCode);
+                } catch (PendingDrawService.PendingDrawInProgressException exception) {
+                    sendText(chatId,
+                            "❌ Є незавершений розподіл. Повтори `/run`; нову реєстрацію відкрити не можна.");
                 } catch (SecurityException exception) {
                     sendText(chatId, "❌ Лише організатор може відкрити реєстрацію.");
                 } catch (IOException exception) {
@@ -224,6 +240,8 @@ public class SecretSantaBot extends TelegramLongPollingBot {
 
             case "/run":
                 if (requireOrganizer(userId, chatId, privateChat)) {
+                    pendingPairParticipantId = null;
+                    activePairingSessionToken = null;
                     runSecretSanta(userId);
                 }
                 break;
@@ -236,7 +254,18 @@ public class SecretSantaBot extends TelegramLongPollingBot {
                     sendText(chatId, "❌ Використання: `/pair`.");
                     break;
                 }
-                startPairing(userId);
+                try {
+                    if (pendingDrawService.hasPendingDraw()) {
+                        pendingPairParticipantId = null;
+                        activePairingSessionToken = null;
+                        sendText(chatId, "❌ Поки розподіл не завершено, змінювати пари не можна.");
+                        break;
+                    }
+                    startPairing(userId);
+                } catch (IOException exception) {
+                    logger.log(Level.SEVERE, "Could not check pending draw before pairing.", exception);
+                    sendText(chatId, "❌ Не вдалося перевірити стан розподілу. Спробуй пізніше.");
+                }
                 break;
 
             default:
@@ -262,8 +291,9 @@ public class SecretSantaBot extends TelegramLongPollingBot {
     }
 
     private synchronized String openRegistration(long organizerId) throws IOException {
-        String inviteCode = exchangeService.openRegistration(organizerId);
+        String inviteCode = pendingDrawService.openRegistration(organizerId);
         pendingPairParticipantId = null;
+        activePairingSessionToken = null;
         return inviteCode;
     }
 
@@ -271,14 +301,18 @@ public class SecretSantaBot extends TelegramLongPollingBot {
         List<Participant> roster = exchangeService.participants();
         if (roster.size() < 2) {
             pendingPairParticipantId = null;
+            activePairingSessionToken = null;
             sendText(organizerId, "❌ Для створення пари потрібно щонайменше двоє учасників.");
             return;
         }
         pendingPairParticipantId = null;
+        byte[] tokenBytes = new byte[6];
+        RANDOM.nextBytes(tokenBytes);
+        activePairingSessionToken = TOKEN_ENCODER.encodeToString(tokenBytes);
         sendWithKeyboard(
                 organizerId,
                 "Обери першого учасника:",
-                pairingKeyboard(roster, "pair:first:", null));
+                pairingKeyboard(roster, "pair:first:" + activePairingSessionToken + ":", null));
     }
 
     private synchronized void handleCallbackQuery(CallbackQuery callback) {
@@ -309,15 +343,20 @@ public class SecretSantaBot extends TelegramLongPollingBot {
         String[] parts = callback.getData() == null
                 ? new String[0]
                 : callback.getData().split(":", -1);
-        if (parts.length < 3 || parts.length > 4 || !parts[0].equals("pair")) {
+        if (parts.length < 4 || parts.length > 5 || !parts[0].equals("pair")) {
             answerCallback(callback.getId(), "Ця кнопка більше неактивна.");
             return;
         }
 
-        boolean firstSelection = parts[1].equals("first") && parts.length == 3;
-        boolean secondSelection = parts[1].equals("second") && parts.length == 4;
+        boolean firstSelection = parts[1].equals("first") && parts.length == 4;
+        boolean secondSelection = parts[1].equals("second") && parts.length == 5;
         if (!firstSelection && !secondSelection) {
             answerCallback(callback.getId(), "Ця кнопка більше неактивна.");
+            return;
+        }
+        if (activePairingSessionToken == null
+                || !activePairingSessionToken.equals(parts[2])) {
+            answerCallback(callback.getId(), "Список змінився. Почни вибір заново командою `/pair`.");
             return;
         }
 
@@ -325,10 +364,10 @@ public class SecretSantaBot extends TelegramLongPollingBot {
         long firstId = -1;
         try {
             if (firstSelection) {
-                selectedId = Long.parseLong(parts[2]);
-            } else {
-                firstId = Long.parseLong(parts[2]);
                 selectedId = Long.parseLong(parts[3]);
+            } else {
+                firstId = Long.parseLong(parts[3]);
+                selectedId = Long.parseLong(parts[4]);
             }
         } catch (NumberFormatException exception) {
             answerCallback(callback.getId(), "Некоректний вибір учасника.");
@@ -344,6 +383,7 @@ public class SecretSantaBot extends TelegramLongPollingBot {
         Participant selected = exchangeService.participant(selectedId).orElse(null);
         if (selected == null) {
             pendingPairParticipantId = null;
+            activePairingSessionToken = null;
             answerCallback(callback.getId(), "Список учасників змінився. Почни з `/pair`.");
             return;
         }
@@ -357,7 +397,10 @@ public class SecretSantaBot extends TelegramLongPollingBot {
                     userId,
                     "Обери партнера для " + escapeMarkdown(selected.name()) + ":",
                     pairingKeyboard(
-                            roster, "pair:second:" + selectedId + ":", selectedId));
+                            roster,
+                            "pair:second:" + activePairingSessionToken + ":"
+                                    + selectedId + ":",
+                            selectedId));
             answerCallback(callback.getId(), "Обери другого учасника.");
             return;
         }
@@ -367,6 +410,7 @@ public class SecretSantaBot extends TelegramLongPollingBot {
         }
 
         pendingPairParticipantId = null;
+        activePairingSessionToken = null;
         try {
             ExchangeService.PairingChange change = exchangeService.pair(firstId, selectedId);
             if (change.unchanged()) {
@@ -426,34 +470,37 @@ public class SecretSantaBot extends TelegramLongPollingBot {
     }
 
     private void runSecretSanta(long adminChatId) {
-        List<Participant> list = exchangeService.participants();
-        if (list.size() < 2) {
-            sendText(adminChatId, "❌ Замало учасників для розподілу (потрібно мінімум 2).");
-            return;
-        }
-
         try {
-            Map<Participant, Participant> assignments = AssignmentGenerator.generate(list);
-
-            // Розсилаємо результати кожному в особисті повідомлення
-            for (Map.Entry<Participant, Participant> entry : assignments.entrySet()) {
-                Participant giver = entry.getKey();
-                Participant receiver = entry.getValue();
-
-                String personalMessage = "🎁 **Жеребкування Таємного Санти завершено!** 🎅\n\n" +
-                        "Твоя ціль — купити подарунок для: **"
-                        + escapeMarkdown(receiver.name()) + "** 🎉\n\n" +
-                        "Зберігай інтригу і готуй сюрприз! 🤫";
-
-                sendText(giver.chatId(), personalMessage);
+            PendingDrawService.Result result = pendingDrawService.run();
+            switch (result.status()) {
+                case TOO_FEW_PARTICIPANTS:
+                    sendText(adminChatId, "❌ Замало учасників для розподілу (потрібно мінімум 2).");
+                    break;
+                case PENDING:
+                    sendText(
+                            adminChatId,
+                            "⚠️ Не вдалося доставити результати "
+                                    + result.failedDeliveries()
+                                    + " учасникам. Розподіл збережено; повтори `/run`, "
+                                    + "щоб повторити доставку без нового жеребкування.");
+                    break;
+                case COMPLETED:
+                    sendText(
+                            adminChatId,
+                            "✅ Розподіл успішно завершено! Усі учасники отримали свої цілі в особисті чати.");
+                    break;
             }
-
-            sendText(adminChatId, "✅ Розподіл успішно завершено! Усі учасники отримали свої цілі в особисті чати.");
-            exchangeService.clearParticipants();
-
-        } catch (Exception e) {
-            sendText(adminChatId, "❌ Не вдалося знайти комбінацію: " + e.getMessage() +
-                    "\nСпробуйте ще раз або перевірте пари (можливо, пар занадто багато відносно кількості людей).");
+        } catch (IllegalStateException exception) {
+            sendText(
+                    adminChatId,
+                    "❌ Не вдалося знайти комбінацію. Перевір пари: для цієї групи немає "
+                            + "допустимого розподілу.");
+        } catch (IOException exception) {
+            logger.log(Level.SEVERE, "Could not safely persist or resume the pending draw.", exception);
+            sendText(
+                    adminChatId,
+                    "❌ Не вдалося безпечно продовжити розподіл. Не відкривай нову реєстрацію; "
+                            + "повтори `/run`, щоб відновити поточний розподіл.");
         }
     }
 
@@ -520,9 +567,23 @@ public class SecretSantaBot extends TelegramLongPollingBot {
         OrganizerService organizerService = new OrganizerService(
                 new OrganizerStore(Path.of(userHome, ".secretsanta-telegram-bot")),
                 configuration.setupCode());
+        PendingDrawStore pendingDrawStore = new PendingDrawStore(
+                Path.of(userHome, ".secretsanta-telegram-bot"), configuration.dataKey());
+        try {
+            instanceLock = pendingDrawStore.acquireInstanceLock();
+        } catch (IOException exception) {
+            logger.log(Level.SEVERE, "Could not lock the Secret Santa data directory.", exception);
+            throw new IllegalStateException(
+                    "Another bot may already be using this data directory.", exception);
+        }
         TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
         botsApi.registerBot(new SecretSantaBot(
-                configuration.botToken(), configuration.botUsername(), organizerService));
+                configuration.botToken(),
+                configuration.botUsername(),
+                organizerService,
+                pendingDrawStore));
         logger.info("🤖 Бот Таємного Санти успішно запущений і слухає повідомлення!");
     }
+
+    private static volatile PendingDrawStore.InstanceLock instanceLock;
 }

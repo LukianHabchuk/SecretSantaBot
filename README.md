@@ -21,7 +21,9 @@ Provide these values through the process environment or a trusted secret manager
 
 The data key must remain the same while a draw is pending. Store it securely
 outside the repository and keep a backup; losing it makes an undelivered draw
-unrecoverable. Do not commit credentials, keys, or environment files.
+unrecoverable. The bot stores pending assignments and delivery progress encrypted
+with AES-256-GCM in `<user.home>/.secretsanta-telegram-bot/pending-draw.enc`.
+Do not commit credentials, keys, or environment files.
 
 Telegram bot chats are not end-to-end encrypted between participants and the bot.
 Telegram and the machine or service running the bot can access messages processed
@@ -58,6 +60,14 @@ organizer sends `/pair`, selects one participant, then selects their partner
 using the inline buttons. Re-pairing either person removes their previous pair;
 any former partners are left unpaired and the organizer is told which pairs
 changed.
+
+The organizer starts the draw with `/run`. The bot saves the complete encrypted
+draw before sending any assignments. If any private delivery fails, the
+organizer is told to retry with `/run`; the bot retries only undelivered messages
+using the same assignments. A pending draw survives restarts, blocks `/open`,
+and is deleted only after all assignments are delivered. If Telegram accepted a
+message just before the process stopped, retrying may send that same assignment
+again. Run only one bot process against a data directory at a time.
 
 ## Project layout
 

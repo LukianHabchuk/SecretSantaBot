@@ -67,6 +67,10 @@ final class OrganizerService {
         return activeInviteCode != null;
     }
 
+    synchronized void closeRegistration() {
+        activeInviteCode = null;
+    }
+
     synchronized InviteCodeStatus validateInviteCode(String providedCode) {
         if (activeInviteCode == null) {
             return InviteCodeStatus.CLOSED;

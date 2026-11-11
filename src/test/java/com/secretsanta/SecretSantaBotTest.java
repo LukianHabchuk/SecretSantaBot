@@ -16,8 +16,11 @@ import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.User;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
+import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 class SecretSantaBotTest {
+    private static final byte[] TEST_DATA_KEY = new byte[32];
+
     @TempDir
     Path dataDirectory;
 
@@ -219,6 +222,37 @@ class SecretSantaBotTest {
     }
 
     @Test
+    void inlinePairingRejectsStaleSecondChoiceFromEarlierFlow() throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+
+        String inviteCode = openRegistration(bot, messenger);
+        for (long userId = 201L; userId <= 203L; userId++) {
+            bot.onUpdateReceived(update(
+                    userId, userId, "private", "/join " + inviteCode + " Guest " + userId));
+        }
+
+        bot.onUpdateReceived(update(100L, 100L, "private", "/pair"));
+        String oldFirstChoice = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Guest 201");
+        bot.onUpdateReceived(callbackUpdate(oldFirstChoice, 100L, 100L, "old-first"));
+        String staleSecondChoice = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Guest 202");
+
+        bot.onUpdateReceived(update(100L, 100L, "private", "/pair"));
+        String currentFirstChoice = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Guest 201");
+        bot.onUpdateReceived(callbackUpdate(currentFirstChoice, 100L, 100L, "new-first"));
+        callbackDataFor(messenger.sentMessages.getLast().keyboard(), "Guest 203");
+
+        bot.onUpdateReceived(callbackUpdate(staleSecondChoice, 100L, 100L, "stale-second"));
+
+        assertTrue(messenger.callbackAnswers.getLast().text().contains("Список змінився"));
+        assertTrue(messenger.sentMessages.getLast().keyboard() != null);
+    }
+
+    @Test
     void inlinePairingDoesNotExposeButtonsInGroupChats() throws Exception {
         OrganizerService organizerService = createService();
         TestTelegramMessenger messenger = new TestTelegramMessenger();
@@ -233,11 +267,45 @@ class SecretSantaBotTest {
         assertTrue(messenger.sentMessages.getLast().text().contains("особистому чаті"));
     }
 
+    @Test
+    void failedRunDoesNotReportSuccessOrClearRosterAndCanBeRetried() throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+
+        String inviteCode = openRegistration(bot, messenger);
+        for (long userId = 201L; userId <= 203L; userId++) {
+            bot.onUpdateReceived(update(
+                    userId, userId, "private", "/join " + inviteCode + " Guest " + userId));
+        }
+        messenger.failChatId = 202L;
+
+        bot.onUpdateReceived(update(100L, 100L, "private", "/run"));
+
+        String failureNotice = messenger.sentMessages.getLast().text();
+        assertTrue(failureNotice.contains("повтори `/run`"));
+        assertFalse(failureNotice.contains("успішно завершено"));
+        assertTrue(new PendingDrawStore(dataDirectory, TEST_DATA_KEY).load().isPresent());
+        bot.onUpdateReceived(update(100L, 100L, "private", "/list"));
+        assertTrue(messenger.sentMessages.getLast().text().contains("Guest 203"));
+
+        bot.onUpdateReceived(update(100L, 100L, "private", "/open"));
+        assertTrue(messenger.sentMessages.getLast().text().contains("незавершений розподіл"));
+        bot.onUpdateReceived(update(100L, 100L, "private", "/pair"));
+        assertTrue(messenger.sentMessages.getLast().text().contains("змінювати пари не можна"));
+
+        messenger.failChatId = null;
+        bot.onUpdateReceived(update(100L, 100L, "private", "/run"));
+
+        assertTrue(messenger.sentMessages.getLast().text().contains("успішно завершено"));
+        assertTrue(new PendingDrawStore(dataDirectory, TEST_DATA_KEY).load().isEmpty());
+    }
+
     private OrganizerService createService() {
         return new OrganizerService(new OrganizerStore(dataDirectory), "setup-code");
     }
 
-    private static SecretSantaBot createBot(
+    private SecretSantaBot createBot(
             OrganizerService organizerService, List<SentMessage> sentMessages) {
         return new SecretSantaBot(
                 "test-token",
@@ -252,12 +320,18 @@ class SecretSantaBotTest {
 
                     @Override
                     public void answerCallback(String callbackQueryId, String text) {}
-                });
+                },
+                testPendingDrawStore());
     }
 
-    private static SecretSantaBot createBot(
+    private SecretSantaBot createBot(
             OrganizerService organizerService, TestTelegramMessenger messenger) {
-        return new SecretSantaBot("test-token", "test-bot", organizerService, messenger);
+        return new SecretSantaBot(
+                "test-token", "test-bot", organizerService, messenger, testPendingDrawStore());
+    }
+
+    private PendingDrawStore testPendingDrawStore() {
+        return new PendingDrawStore(dataDirectory, TEST_DATA_KEY);
     }
 
     private static String openRegistration(
@@ -345,9 +419,15 @@ class SecretSantaBotTest {
         private final List<SentMessage> sentMessages = new ArrayList<>();
         private final List<CallbackAnswer> callbackAnswers = new ArrayList<>();
 
+        private Long failChatId;
+
         @Override
-        public void sendMessage(long chatId, String text, InlineKeyboardMarkup keyboard) {
+        public void sendMessage(long chatId, String text, InlineKeyboardMarkup keyboard)
+                throws TelegramApiException {
             sentMessages.add(new SentMessage(chatId, text, keyboard));
+            if (failChatId != null && failChatId == chatId) {
+                throw new TelegramApiException("Simulated delivery failure.");
+            }
         }
 
         @Override
