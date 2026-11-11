@@ -117,7 +117,7 @@ public class SecretSantaBot extends TelegramLongPollingBot {
         }
 
         try {
-            Map<Participant, Participant> assignments = generateAssignments(list);
+            Map<Participant, Participant> assignments = AssignmentGenerator.generate(list);
 
             // Розсилаємо результати кожному в особисті повідомлення
             for (Map.Entry<Participant, Participant> entry : assignments.entrySet()) {
@@ -138,46 +138,6 @@ public class SecretSantaBot extends TelegramLongPollingBot {
             sendText(adminChatId, "❌ Не вдалося знайти комбінацію: " + e.getMessage() +
                     "\nСпробуйте ще раз або перевірте пари (можливо, пар занадто багато відносно кількості людей).");
         }
-    }
-
-    // Алгоритм розподілу з перевіркою пар і самоповторів
-    private Map<Participant, Participant> generateAssignments(List<Participant> group) {
-        List<Participant> givers = new ArrayList<>(group);
-        List<Participant> receivers = new ArrayList<>(group);
-
-        Random random = new Random();
-        boolean valid = false;
-        int attempts = 0;
-        int maxAttempts = 15000;
-
-        while (!valid && attempts < maxAttempts) {
-            Collections.shuffle(receivers, random);
-            valid = true;
-            attempts++;
-
-            for (int i = 0; i < givers.size(); i++) {
-                Participant giver = givers.get(i);
-                Participant receiver = receivers.get(i);
-
-                // Умови: не можна дарувати собі або своїй половинці
-                if (giver.equals(receiver) ||
-                        (giver.coupleId() != null && giver.coupleId().equals(receiver.coupleId()))) {
-                    valid = false;
-                    break;
-                }
-            }
-        }
-
-        if (!valid) {
-            throw new IllegalStateException("Вичерпано ліміт спроб. Змініть конфігурацію пар.");
-        }
-
-        Map<Participant, Participant> assignments = new LinkedHashMap<>();
-        for (int i = 0; i < givers.size(); i++) {
-            assignments.put(givers.get(i), receivers.get(i));
-        }
-
-        return assignments;
     }
 
     private void sendText(long chatId, String text) {

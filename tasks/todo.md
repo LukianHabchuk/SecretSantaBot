@@ -65,15 +65,15 @@ provide a safe Maven Exec Plugin launch using external credentials.
 a complete one-to-one draw that excludes self-assignments and partner pairs.
 
 **Acceptance criteria:**
-- [ ] Every generated result includes each registered participant exactly once as
+- [x] Every generated result includes each registered participant exactly once as
   giver and exactly once as recipient.
-- [ ] No generated result assigns a participant to themselves or their partner.
-- [ ] Impossible configurations fail explicitly without returning a partial draw.
+- [x] No generated result assigns a participant to themselves or their partner.
+- [x] Impossible configurations fail explicitly without returning a partial draw.
 
 **Verification:**
-- [ ] Focused assignment tests pass, including small valid cases and impossible
+- [x] Focused assignment tests pass, including small valid cases and impossible
   partner configurations.
-- [ ] `mvn test` and `mvn package` pass.
+- [x] `mvn test` and `mvn package` pass.
 
 **Dependencies:** Tasks 1 and 2
 
@@ -86,8 +86,8 @@ a complete one-to-one draw that excludes self-assignments and partner pairs.
 
 ## Checkpoint: After Tasks 1-3
 - [ ] Resolved spec decisions are approved.
-- [ ] Java 27 compilation and tests pass.
-- [ ] Assignment constraints and impossible cases are covered by tests.
+- [x] Java 27 compilation and tests pass.
+- [x] Assignment constraints and impossible cases are covered by tests.
 - [ ] Human reviews the foundation before participant-flow work proceeds.
 
 ## Task 4: Implementing organizer claim and exchange setup
