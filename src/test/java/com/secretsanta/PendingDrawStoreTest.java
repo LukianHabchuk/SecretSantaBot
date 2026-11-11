@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -53,10 +54,29 @@ class PendingDrawStoreTest {
         store.save(pendingDraw);
         byte[] firstEncryption = Files.readAllBytes(store.pendingFile());
 
-        store.save(pendingDraw.markDelivered(201L));
+        store.save(pendingDraw);
 
         assertFalse(java.util.Arrays.equals(
                 firstEncryption, Files.readAllBytes(store.pendingFile())));
+    }
+
+    @Test
+    void preservesExistingPendingDrawWhenAtomicReplacementIsUnavailable() throws Exception {
+        PendingDrawStore store = new PendingDrawStore(dataDirectory, KEY);
+        PendingDrawStore.PendingDraw original = samplePendingDraw();
+        store.save(original);
+        PendingDrawStore nonAtomicStore = new PendingDrawStore(
+                dataDirectory,
+                KEY,
+                (source, target) -> {
+                    throw new AtomicMoveNotSupportedException(
+                            source.toString(), target.toString(), "Atomic move unavailable");
+                });
+
+        assertThrows(
+                AtomicMoveNotSupportedException.class,
+                () -> nonAtomicStore.save(original.markDelivered(201L)));
+        assertEquals(original, store.load().orElseThrow());
     }
 
     @Test

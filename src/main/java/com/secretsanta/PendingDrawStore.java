@@ -9,7 +9,6 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -19,6 +18,7 @@ import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
@@ -37,6 +37,11 @@ final class PendingDrawStore {
     private static final ReentrantLock DRAW_JVM_LOCK = new ReentrantLock();
 
     record Assignment(long giverId, String giverName, long receiverId, String receiverName) {}
+
+    @FunctionalInterface
+    interface AtomicMoveOperation {
+        void move(Path source, Path target) throws IOException;
+    }
 
     record PendingDraw(List<Assignment> assignments, Set<Long> deliveredGiverIds) {
         PendingDraw {
@@ -79,8 +84,21 @@ final class PendingDrawStore {
     private final Path drawLockFile;
     private final Path instanceLockFile;
     private final byte[] key;
+    private final AtomicMoveOperation atomicMoveOperation;
 
     PendingDrawStore(Path dataDirectory, byte[] key) {
+        this(
+                dataDirectory,
+                key,
+                (source, target) -> Files.move(
+                        source,
+                        target,
+                        StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING));
+    }
+
+    PendingDrawStore(
+            Path dataDirectory, byte[] key, AtomicMoveOperation atomicMoveOperation) {
         if (dataDirectory == null || key == null || key.length != 32) {
             throw new IllegalArgumentException("A data directory and 256-bit key are required.");
         }
@@ -89,6 +107,7 @@ final class PendingDrawStore {
         this.drawLockFile = dataDirectory.resolve("pending-draw.lock");
         this.instanceLockFile = dataDirectory.resolve("bot-instance.lock");
         this.key = key.clone();
+        this.atomicMoveOperation = Objects.requireNonNull(atomicMoveOperation);
     }
 
     Optional<PendingDraw> load() throws IOException {
@@ -152,18 +171,7 @@ final class PendingDrawStore {
                 }
                 channel.force(true);
             }
-            try {
-                Files.move(
-                        temporaryFile,
-                        pendingFile,
-                        StandardCopyOption.ATOMIC_MOVE,
-                        StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException exception) {
-                Files.move(
-                        temporaryFile,
-                        pendingFile,
-                        StandardCopyOption.REPLACE_EXISTING);
-            }
+            atomicMoveOperation.move(temporaryFile, pendingFile);
         } finally {
             Files.deleteIfExists(temporaryFile);
         }
