@@ -159,6 +159,66 @@ final class ExchangeService {
                 .findFirst();
     }
 
+    synchronized void requestPair(long requesterId, long requestedPartnerId) throws IOException {
+        requireRegistrationOpen();
+        if (requesterId == requestedPartnerId) {
+            throw new IllegalArgumentException("A participant cannot request themselves.");
+        }
+        ExchangeState.Participant requester = findParticipant(requesterId);
+        ExchangeState.Participant requestedPartner = findParticipant(requestedPartnerId);
+        if (requester == null || requestedPartner == null) {
+            throw new IllegalArgumentException("Both participants must be registered.");
+        }
+        if (requester.partnerId() != null || requestedPartner.partnerId() != null) {
+            throw new IllegalArgumentException("Paired participants cannot request a partner.");
+        }
+        if (state.pairRequests().stream().anyMatch(request ->
+                involves(request, requesterId) || involves(request, requestedPartnerId))) {
+            throw new IllegalArgumentException(
+                    "A participant can have only one open pair request.");
+        }
+
+        List<ExchangeState.PairRequest> requests = new ArrayList<>(state.pairRequests());
+        requests.add(new ExchangeState.PairRequest(requesterId, requestedPartnerId));
+        persist(stateWithPairRequests(requests));
+    }
+
+    synchronized void acceptPairRequest(long recipientId, long requesterId) throws IOException {
+        requireRegistrationOpen();
+        ExchangeState.PairRequest request = requirePairRequest(requesterId, recipientId);
+        Map<Long, ExchangeState.Participant> participants = new LinkedHashMap<>();
+        state.participants().forEach(participant ->
+                participants.put(participant.userId(), participant));
+        ExchangeState.Participant requester = participants.get(requesterId);
+        ExchangeState.Participant recipient = participants.get(recipientId);
+        participants.put(
+                requesterId,
+                new ExchangeState.Participant(requesterId, requester.name(), recipientId));
+        participants.put(
+                recipientId,
+                new ExchangeState.Participant(recipientId, recipient.name(), requesterId));
+
+        List<ExchangeState.PairRequest> requests = state.pairRequests().stream()
+                .filter(pending -> !pending.equals(request))
+                .toList();
+        persist(stateWithParticipantsAndRequests(participants, requests));
+    }
+
+    synchronized void declinePairRequest(long recipientId, long requesterId) throws IOException {
+        requireRegistrationOpen();
+        removePairRequest(recipientId, requesterId, recipientId);
+    }
+
+    synchronized void cancelPairRequest(long requesterId, long requestedPartnerId)
+            throws IOException {
+        requireRegistrationOpen();
+        removePairRequest(requesterId, requesterId, requestedPartnerId);
+    }
+
+    synchronized boolean hasOpenPairRequests() {
+        return !state.pairRequests().isEmpty();
+    }
+
     synchronized PairingChange pair(long firstId, long secondId) throws IOException {
         if (state.phase() != ExchangeState.Phase.REGISTRATION_OPEN) {
             throw new IllegalStateException("Pairing is available only during registration.");
@@ -225,6 +285,10 @@ final class ExchangeService {
 
     synchronized void closeRegistration() throws IOException {
         if (state.phase() == ExchangeState.Phase.REGISTRATION_OPEN) {
+            if (!state.pairRequests().isEmpty()) {
+                throw new IllegalStateException(
+                        "Pair requests must be resolved before closing registration.");
+            }
             persist(new ExchangeState(
                     ExchangeState.Phase.REGISTRATION_CLOSED,
                     null,
@@ -250,6 +314,72 @@ final class ExchangeService {
                 .filter(participant -> participant.userId() == userId)
                 .findFirst()
                 .orElse(null);
+    }
+
+    private void removePairRequest(
+            long actorId, long requesterId, long requestedPartnerId) throws IOException {
+        requireRegisteredParticipant(actorId);
+        requireRegisteredParticipant(requesterId);
+        requireRegisteredParticipant(requestedPartnerId);
+        if (actorId != requesterId && actorId != requestedPartnerId) {
+            throw new IllegalArgumentException("Only a request participant can resolve it.");
+        }
+        ExchangeState.PairRequest request = requirePairRequest(requesterId, requestedPartnerId);
+        List<ExchangeState.PairRequest> requests = state.pairRequests().stream()
+                .filter(pending -> !pending.equals(request))
+                .toList();
+        persist(stateWithPairRequests(requests));
+    }
+
+    private ExchangeState.PairRequest requirePairRequest(long requesterId, long recipientId) {
+        requireRegisteredParticipant(requesterId);
+        requireRegisteredParticipant(recipientId);
+        return state.pairRequests().stream()
+                .filter(request -> request.requesterId() == requesterId
+                        && request.requestedPartnerId() == recipientId)
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Pair request does not exist."));
+    }
+
+    private void requireRegisteredParticipant(long userId) {
+        if (findParticipant(userId) == null) {
+            throw new IllegalArgumentException("Participant is not registered.");
+        }
+    }
+
+    private void requireRegistrationOpen() {
+        if (state.phase() != ExchangeState.Phase.REGISTRATION_OPEN) {
+            throw new IllegalStateException("Pair requests are available only during registration.");
+        }
+    }
+
+    private boolean involves(ExchangeState.PairRequest request, long participantId) {
+        return request.requesterId() == participantId
+                || request.requestedPartnerId() == participantId;
+    }
+
+    private ExchangeState stateWithPairRequests(List<ExchangeState.PairRequest> requests) {
+        return stateWithParticipantsAndRequests(state.participants(), requests);
+    }
+
+    private ExchangeState stateWithParticipantsAndRequests(
+            List<ExchangeState.Participant> participants,
+            List<ExchangeState.PairRequest> requests) {
+        return new ExchangeState(
+                state.phase(),
+                state.inviteCode(),
+                participants,
+                requests,
+                state.drawGeneration(),
+                state.assignments(),
+                state.deliveredUserIds(),
+                state.confirmedUserIds());
+    }
+
+    private ExchangeState stateWithParticipantsAndRequests(
+            Map<Long, ExchangeState.Participant> participants,
+            List<ExchangeState.PairRequest> requests) {
+        return stateWithParticipantsAndRequests(List.copyOf(participants.values()), requests);
     }
 
     private static void clearPartner(

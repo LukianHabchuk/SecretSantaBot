@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -210,6 +211,105 @@ class ExchangeServiceTest {
 
         assertThrows(IllegalArgumentException.class, () -> exchange.pair(201L, 201L));
         assertThrows(IllegalArgumentException.class, () -> exchange.pair(201L, 999L));
+    }
+
+    @Test
+    void participantPairRequestMustBeAcceptedAndSurvivesRestart() throws Exception {
+        OrganizerService organizerService = createOrganizerService();
+        ExchangeService exchange = createExchangeWithParticipants(organizerService);
+
+        exchange.requestPair(201L, 202L);
+        ExchangeService restartedExchange = new ExchangeService(
+                new OrganizerService(new OrganizerStore(dataDirectory), "setup-code"),
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY));
+
+        assertEquals(
+                List.of(new ExchangeState.PairRequest(201L, 202L)),
+                restartedExchange.state().pairRequests());
+        restartedExchange.acceptPairRequest(202L, 201L);
+
+        assertEquals(202L, restartedExchange.participant(201L).orElseThrow().partnerId());
+        assertEquals(201L, restartedExchange.participant(202L).orElseThrow().partnerId());
+        assertTrue(restartedExchange.state().pairRequests().isEmpty());
+
+        ExchangeService acceptedPairAfterRestart = new ExchangeService(
+                new OrganizerService(new OrganizerStore(dataDirectory), "setup-code"),
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY));
+        assertEquals(202L, acceptedPairAfterRestart.participant(201L).orElseThrow().partnerId());
+        assertEquals(201L, acceptedPairAfterRestart.participant(202L).orElseThrow().partnerId());
+        assertTrue(acceptedPairAfterRestart.state().pairRequests().isEmpty());
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> acceptedPairAfterRestart.acceptPairRequest(202L, 201L));
+    }
+
+    @Test
+    void pairRequestsRejectInvalidOrAlreadyBusyParticipants() throws Exception {
+        ExchangeService exchange = createExchangeWithParticipants(createOrganizerService());
+        exchange.pair(201L, 202L);
+        exchange.requestPair(203L, 204L);
+
+        assertThrows(IllegalArgumentException.class, () -> exchange.requestPair(203L, 203L));
+        assertThrows(IllegalArgumentException.class, () -> exchange.requestPair(203L, 999L));
+        assertThrows(IllegalArgumentException.class, () -> exchange.requestPair(201L, 204L));
+        assertThrows(IllegalArgumentException.class, () -> exchange.requestPair(204L, 203L));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> exchange.acceptPairRequest(203L, 204L));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> exchange.declinePairRequest(999L, 203L));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> exchange.cancelPairRequest(203L, 999L));
+        assertEquals(
+                List.of(new ExchangeState.PairRequest(203L, 204L)),
+                exchange.state().pairRequests());
+    }
+
+    @Test
+    void decliningAndCancelingRequestsOnlyRemoveTheAuthorizedRequest() throws Exception {
+        ExchangeService exchange = createExchangeWithParticipants(createOrganizerService());
+        exchange.requestPair(201L, 202L);
+        exchange.requestPair(203L, 204L);
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> exchange.declinePairRequest(201L, 202L));
+        exchange.declinePairRequest(202L, 201L);
+        assertEquals(
+                List.of(new ExchangeState.PairRequest(203L, 204L)),
+                exchange.state().pairRequests());
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> exchange.cancelPairRequest(204L, 203L));
+        exchange.cancelPairRequest(203L, 204L);
+        assertTrue(exchange.state().pairRequests().isEmpty());
+    }
+
+    @Test
+    void organizerPairingClearsRequestsForAffectedParticipants() throws Exception {
+        ExchangeService exchange = createExchangeWithParticipants(createOrganizerService());
+        exchange.requestPair(201L, 202L);
+
+        exchange.pair(201L, 203L);
+
+        assertTrue(exchange.state().pairRequests().isEmpty());
+        assertEquals(203L, exchange.participant(201L).orElseThrow().partnerId());
+        assertEquals(201L, exchange.participant(203L).orElseThrow().partnerId());
+        assertNull(exchange.participant(202L).orElseThrow().partnerId());
+    }
+
+    @Test
+    void registrationCannotCloseWhilePairRequestsAreUnresolved() throws Exception {
+        ExchangeService exchange = createExchangeWithParticipants(createOrganizerService());
+        exchange.requestPair(201L, 202L);
+
+        assertThrows(IllegalStateException.class, exchange::closeRegistration);
+
+        assertEquals(ExchangeState.Phase.REGISTRATION_OPEN, exchange.state().phase());
+        assertEquals(1, exchange.state().pairRequests().size());
     }
 
     private OrganizerService createOrganizerService() throws Exception {

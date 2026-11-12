@@ -134,6 +134,24 @@ class PendingDrawServiceTest {
         assertTrue(store.load().isEmpty());
     }
 
+    @Test
+    void unresolvedPairRequestBlocksAssignmentWithoutClosingRegistration() throws Exception {
+        OrganizerService organizerService = createOrganizerService();
+        ExchangeService exchangeService = createExchangeWithThreeParticipants(organizerService);
+        exchangeService.requestPair(201L, 202L);
+        PendingDrawStore store = new PendingDrawStore(dataDirectory, KEY);
+        RecordingMessenger messenger = new RecordingMessenger(null);
+        PendingDrawService service =
+                new PendingDrawService(store, exchangeService, organizerService, messenger);
+
+        assertThrows(IllegalStateException.class, service::run);
+
+        assertTrue(messenger.messages().isEmpty());
+        assertTrue(store.load().isEmpty());
+        assertEquals(ExchangeState.Phase.REGISTRATION_OPEN, exchangeService.state().phase());
+        assertEquals(1, exchangeService.state().pairRequests().size());
+    }
+
     private OrganizerService createOrganizerService() throws Exception {
         OrganizerService service =
                 new OrganizerService(new OrganizerStore(dataDirectory), "setup-code");

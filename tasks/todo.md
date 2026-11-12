@@ -122,17 +122,18 @@ confirmation/editing. Keep text input only for codes and edited names.
 cancel actions. Persist requests and enforce reciprocal, one-partner exclusions.
 
 **Acceptance criteria:**
-- [ ] Only unpaired participants without another open request can request or
+- [x] Only unpaired participants without another open request can request or
   accept a partner; self-pairing and duplicate requests are rejected.
-- [ ] Acceptance creates a reciprocal pair; decline/cancel clears only the
+- [x] Acceptance creates a reciprocal pair; decline/cancel clears only the
   relevant request; accepted pairs cannot be changed by participants.
-- [ ] Pending requests and accepted pairs survive restart.
-- [ ] Assignment cannot start while any pair request remains unresolved.
+- [x] Pending requests and accepted pairs survive restart.
+- [x] Assignment cannot start while any pair request remains unresolved.
 
 **Verification:**
-- [ ] Domain tests cover request state transitions, conflicts, restart recovery,
+- [x] Domain tests cover request state transitions, conflicts, restart recovery,
   organizer changes, and invalid participant IDs.
-- [ ] `mvn test` passes.
+- [x] `mvn clean package` passes; all 94 tests pass locally and in the Java 27
+  Docker build.
 
 **Dependencies:** Task 8
 

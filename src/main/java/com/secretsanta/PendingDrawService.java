@@ -67,6 +67,10 @@ final class PendingDrawService {
         try (PendingDrawStore.LockHandle ignored = store.acquireDrawLock()) {
             PendingDrawStore.PendingDraw pendingDraw = store.load().orElse(null);
             if (pendingDraw == null) {
+                if (exchangeService.hasOpenPairRequests()) {
+                    throw new IllegalStateException(
+                            "Pair requests must be resolved before assignment.");
+                }
                 List<SecretSantaBot.Participant> participants = exchangeService.participants();
                 if (participants.size() < 2) {
                     return new Result(Status.TOO_FEW_PARTICIPANTS, 0);
