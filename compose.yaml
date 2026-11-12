@@ -1,0 +1,23 @@
+services:
+  bot:
+    build: .
+    image: secret-santa-bot:pilot
+    init: true
+    restart: unless-stopped
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?Set TELEGRAM_BOT_TOKEN in .env}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:?Set TELEGRAM_BOT_USERNAME in .env}
+      SECRET_SANTA_SETUP_CODE: ${SECRET_SANTA_SETUP_CODE:?Set SECRET_SANTA_SETUP_CODE in .env}
+      SECRET_SANTA_DATA_KEY: ${SECRET_SANTA_DATA_KEY:?Set SECRET_SANTA_DATA_KEY in .env}
+    volumes:
+      - bot-data:/home/bot/.secretsanta-telegram-bot
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  bot-data:

@@ -42,6 +42,56 @@ mvn exec:java
 Set `JAVA_HOME` to a JDK 27 installation and ensure its `bin` directory is on
 `PATH` before running Maven.
 
+## Container pilot with a test bot
+
+The Docker image builds and tests the application with Java 27, then runs it as
+an unprivileged user. It exposes no inbound ports; the bot connects to Telegram
+using outbound networking.
+
+Copy the example environment file and replace every placeholder with credentials
+for a **separate test bot**:
+
+```powershell
+Copy-Item .env.example .env
+$bytes = New-Object byte[] 32
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+$rng.GetBytes($bytes)
+[Convert]::ToBase64String($bytes)
+$rng.Dispose()
+```
+
+Paste the generated Base64 value into `SECRET_SANTA_DATA_KEY` in `.env`, and set
+the test bot token, username, and a long random setup code there. Keep `.env`
+local; it is ignored by Git. Never send tokens or encryption keys in chat or
+commit them. For a hosted deployment, inject secrets through the platform's
+secret manager rather than storing them in a repository or image.
+
+Start the test bot and inspect its logs:
+
+```powershell
+docker compose up --build -d
+docker compose logs -f bot
+```
+
+In a private chat, exercise `/claim`, `/open`, participant `/join`, organizer
+`/pair`, and `/run` using test accounts before any real exchange. The bot stores
+the organizer ID and encrypted pending draw in the persistent `bot-data`
+volume. Back up that volume and the matching `SECRET_SANTA_DATA_KEY` separately;
+the key must remain stable while a draw is pending. Registration and the roster
+are in memory, so a restart during registration requires opening a new exchange.
+
+Stop or remove the container without deleting persisted state:
+
+```powershell
+docker compose stop
+docker compose down
+```
+
+Do **not** use `docker compose down --volumes` for normal shutdown: it deletes
+the organizer ID and pending-draw data. Compose restarts the process after exit,
+but this app has no health endpoint or external error monitoring; watch the logs
+and configure platform-specific monitoring before relying on a hosted instance.
+
 ## Organizer setup
 
 In a private chat with the bot, the organizer sends `/claim <setup code>` once.
