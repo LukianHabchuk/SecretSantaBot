@@ -9,8 +9,8 @@ final class BotButtons {
     static final String ONBOARDING_PREFIX = "onboarding:";
     static final String CLAIM = ONBOARDING_PREFIX + "claim";
     static final String JOIN = ONBOARDING_PREFIX + "join";
-    static final String JOIN_CONFIRM = ONBOARDING_PREFIX + "join:confirm";
-    static final String JOIN_EDIT = ONBOARDING_PREFIX + "join:edit";
+    static final String JOIN_CONFIRM_PREFIX = ONBOARDING_PREFIX + "join:confirm:";
+    static final String JOIN_EDIT_PREFIX = ONBOARDING_PREFIX + "join:edit:";
     static final String OPEN = ONBOARDING_PREFIX + "open";
     static final String RESET = ONBOARDING_PREFIX + "reset";
     static final String RESET_CONFIRM_PREFIX = RESET + ":confirm:";
@@ -34,10 +34,10 @@ final class BotButtons {
         return keyboard(rows);
     }
 
-    static InlineKeyboardMarkup joinConfirmation() {
+    static InlineKeyboardMarkup joinConfirmation(String token) {
         return keyboard(List.of(
-                List.of(button("Підтвердити ім'я", JOIN_CONFIRM)),
-                List.of(button("Змінити ім'я", JOIN_EDIT))));
+                List.of(button("Підтвердити ім'я", JOIN_CONFIRM_PREFIX + token)),
+                List.of(button("Змінити ім'я", JOIN_EDIT_PREFIX + token))));
     }
 
     static InlineKeyboardMarkup resetConfirmation(String token) {

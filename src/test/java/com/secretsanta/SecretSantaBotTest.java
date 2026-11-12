@@ -148,17 +148,47 @@ class SecretSantaBotTest {
         bot.onUpdateReceived(callbackUpdate(
                 "onboarding:join", 201L, 201L, "join", "Alex"));
         bot.onUpdateReceived(update(201L, 201L, "private", inviteCode, "Alex"));
-        bot.onUpdateReceived(callbackUpdate(
-                "onboarding:join:edit", 201L, 201L, "edit", "Alex"));
+        String editCallback = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Змінити ім'я");
+        bot.onUpdateReceived(callbackUpdate(editCallback, 201L, 201L, "edit", "Alex"));
         bot.onUpdateReceived(update(201L, 201L, "private", "Alex Example", "Alex"));
+        String confirmCallback = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Підтвердити ім'я");
         bot.onUpdateReceived(callbackUpdate(
-                "onboarding:join:confirm", 201L, 201L, "confirm", "Alex"));
+                confirmCallback, 201L, 201L, "confirm", "Alex"));
 
         ExchangeState exchangeState =
                 new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow();
         assertTrue(exchangeState.participants().stream()
                 .anyMatch(participant -> participant.userId() == 201L
                         && participant.name().equals("Alex Example")));
+    }
+
+    @Test
+    void staleJoinConfirmationCannotConfirmAnEditedName() throws Exception {
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(createService(), messenger);
+        String inviteCode = openRegistrationWithButtons(bot, messenger);
+
+        bot.onUpdateReceived(update(201L, 201L, "private", "/start"));
+        bot.onUpdateReceived(callbackUpdate(
+                "onboarding:join", 201L, 201L, "join", "Alex"));
+        bot.onUpdateReceived(update(201L, 201L, "private", inviteCode, "Alex"));
+        String oldConfirmation = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Підтвердити ім'я");
+
+        String editCallback = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Змінити ім'я");
+        bot.onUpdateReceived(callbackUpdate(editCallback, 201L, 201L, "edit", "Alex"));
+        bot.onUpdateReceived(update(201L, 201L, "private", "Alex Example", "Alex"));
+        bot.onUpdateReceived(callbackUpdate(
+                oldConfirmation, 201L, 201L, "stale-confirm", "Alex"));
+
+        ExchangeState exchangeState =
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow();
+        assertTrue(exchangeState.participants().stream()
+                .noneMatch(participant -> participant.userId() == 201L));
+        assertTrue(messenger.callbackAnswers.getLast().text().contains("застарів"));
     }
 
     @Test
@@ -171,15 +201,17 @@ class SecretSantaBotTest {
         bot.onUpdateReceived(callbackUpdate(
                 "onboarding:join", 201L, 201L, "join-1", "Alex"));
         bot.onUpdateReceived(update(201L, 201L, "private", inviteCode, "Alex"));
-        bot.onUpdateReceived(callbackUpdate(
-                "onboarding:join:confirm", 201L, 201L, "confirm-1", "Alex"));
+        String firstConfirm = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Підтвердити ім'я");
+        bot.onUpdateReceived(callbackUpdate(firstConfirm, 201L, 201L, "confirm-1", "Alex"));
 
         bot.onUpdateReceived(update(201L, 201L, "private", "/start"));
         bot.onUpdateReceived(callbackUpdate(
                 "onboarding:join", 201L, 201L, "join-2", "Different"));
         bot.onUpdateReceived(update(201L, 201L, "private", inviteCode, "Different"));
-        bot.onUpdateReceived(callbackUpdate(
-                "onboarding:join:confirm", 201L, 201L, "confirm-2", "Different"));
+        String secondConfirm = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Підтвердити ім'я");
+        bot.onUpdateReceived(callbackUpdate(secondConfirm, 201L, 201L, "confirm-2", "Different"));
 
         ExchangeState exchangeState =
                 new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow();
