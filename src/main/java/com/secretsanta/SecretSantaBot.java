@@ -432,26 +432,30 @@ public class SecretSantaBot extends TelegramLongPollingBot {
             ExchangeService.RegistrationResult result = exchangeService.register(
                     userId, pendingJoin.inviteCode(), pendingJoin.suggestedName());
             switch (result) {
-                case REGISTERED -> {
-                    pendingJoins.remove(userId);
-                    answerCallback(callbackId, "Ти приєднався до обміну.");
-                    sendText(userId, "✅ Ти приєднався до обміну.");
-                }
-                case ALREADY_REGISTERED -> {
-                    pendingJoins.remove(userId);
-                    answerCallback(callbackId, "Ти вже зареєстрований.");
-                    sendText(userId, "ℹ️ Ти вже зареєстрований у цьому обміні.");
-                }
-                case INVALID_INVITE -> {
-                    pendingJoins.remove(userId);
-                    answerCallback(callbackId, "Код запрошення недійсний.");
-                    sendText(userId, "❌ Код запрошення недійсний.");
-                }
-                case REGISTRATION_CLOSED -> {
-                    pendingJoins.remove(userId);
-                    answerCallback(callbackId, "Реєстрація закрита.");
-                    sendText(userId, "❌ Реєстрація зараз закрита.");
-                }
+                case REGISTERED ->
+                        finishJoinAttempt(
+                                userId,
+                                callbackId,
+                                "Ти приєднався до обміну.",
+                                "✅ Ти приєднався до обміну.");
+                case ALREADY_REGISTERED ->
+                        finishJoinAttempt(
+                                userId,
+                                callbackId,
+                                "Ти вже зареєстрований.",
+                                "ℹ️ Ти вже зареєстрований у цьому обміні.");
+                case INVALID_INVITE ->
+                        finishJoinAttempt(
+                                userId,
+                                callbackId,
+                                "Код запрошення недійсний.",
+                                "❌ Код запрошення недійсний.");
+                case REGISTRATION_CLOSED ->
+                        finishJoinAttempt(
+                                userId,
+                                callbackId,
+                                "Реєстрація закрита.",
+                                "❌ Реєстрація зараз закрита.");
                 case INVALID_NAME -> {
                     pendingInputs.put(userId, PendingInput.JOIN_NAME);
                     answerCallback(callbackId, "Ім'я некоректне.");
@@ -463,6 +467,13 @@ public class SecretSantaBot extends TelegramLongPollingBot {
             answerCallback(callbackId, "Не вдалося зберегти реєстрацію.");
             sendText(userId, "❌ Не вдалося зберегти реєстрацію. Спробуй пізніше.");
         }
+    }
+
+    private void finishJoinAttempt(
+            long userId, String callbackId, String callbackText, String message) {
+        pendingJoins.remove(userId);
+        answerCallback(callbackId, callbackText);
+        sendText(userId, message);
     }
 
     private void handleOnboardingCallback(CallbackQuery callback, long userId) {
