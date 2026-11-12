@@ -77,6 +77,8 @@ final class BotMessages {
     static final String PAIR_UNCHANGED_CALLBACK = "Пара не змінилася.";
     static final String PAIR_SAVED_CALLBACK = "Пару збережено.";
     static final String PAIRING_FAILED_CALLBACK = "Не вдалося створити пару.";
+    static final String PAIRING_CLOSED = "Не можна змінювати пари після закриття реєстрації.";
+    static final String PAIRING_CLOSED_CALLBACK = "Реєстрацію закрито.";
     static final String PAIR_PERSIST_FAILED = "❌ Не вдалося зберегти пару. Спробуй пізніше.";
     static final String PAIR_PERSIST_FAILED_CALLBACK = "Не вдалося зберегти пару.";
     static final String PAIR_REQUEST_CLOSED = "❌ Запити на пару доступні лише під час реєстрації.";
@@ -96,6 +98,8 @@ final class BotMessages {
     static final String PAIR_REQUEST_DECLINED = "Запит на пару відхилено.";
     static final String PAIR_REQUEST_CANCELED_CALLBACK = "Запит скасовано.";
     static final String PAIR_REQUEST_CANCELED = "Запит на пару скасовано.";
+    static final String PAIR_REQUEST_CANCELED_BY_ORGANIZER =
+            "Організатор змінив пари, тому твій запит на пару скасовано.";
     static final String PAIR_REQUEST_NONE = "Немає відкритого запиту на пару.";
     static final String PAIR_STATUS_CALLBACK = "Статус пари оновлено.";
     static final String PAIR_CHANGED_UNPAIRED =

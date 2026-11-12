@@ -31,7 +31,12 @@ final class ExchangeService {
             SecretSantaBot.Participant second,
             SecretSantaBot.Participant formerPartnerOfFirst,
             SecretSantaBot.Participant formerPartnerOfSecond,
-            boolean unchanged) {}
+            List<ExchangeState.PairRequest> canceledRequests,
+            boolean unchanged) {
+        PairingChange {
+            canceledRequests = List.copyOf(canceledRequests);
+        }
+    }
 
     private static final int MAX_NAME_CODE_POINTS = 64;
 
@@ -234,7 +239,8 @@ final class ExchangeService {
         if (Objects.equals(first.partnerId(), secondId)
                 && Objects.equals(second.partnerId(), firstId)) {
             return new PairingChange(
-                    toBotParticipant(first), toBotParticipant(second), null, null, true);
+                    toBotParticipant(first), toBotParticipant(second),
+                    null, null, List.of(), true);
         }
 
         ExchangeState.Participant formerPartnerOfFirst = findParticipant(first.partnerId());
@@ -249,11 +255,11 @@ final class ExchangeService {
         updatedParticipants.put(
                 secondId, new ExchangeState.Participant(secondId, second.name(), firstId));
 
+        List<ExchangeState.PairRequest> canceledRequests = state.pairRequests().stream()
+                .filter(request -> involves(request, firstId) || involves(request, secondId))
+                .toList();
         List<ExchangeState.PairRequest> remainingRequests = state.pairRequests().stream()
-                .filter(request -> request.requesterId() != firstId
-                        && request.requestedPartnerId() != firstId
-                        && request.requesterId() != secondId
-                        && request.requestedPartnerId() != secondId)
+                .filter(request -> !involves(request, firstId) && !involves(request, secondId))
                 .toList();
         persist(new ExchangeState(
                 state.phase(),
@@ -270,6 +276,7 @@ final class ExchangeService {
                 toBotParticipant(updatedParticipants.get(secondId)),
                 formerPartnerOfFirst == null ? null : toBotParticipant(formerPartnerOfFirst),
                 formerPartnerOfSecond == null ? null : toBotParticipant(formerPartnerOfSecond),
+                canceledRequests,
                 false);
     }
 

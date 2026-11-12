@@ -463,6 +463,12 @@ final class BotButtonController {
     }
 
     private synchronized void handlePairingCallback(CallbackQuery callback) {
+        if (!isRegistrationOpen()) {
+            cancelPairing();
+            responder.answerCallback(callback.getId(), BotMessages.PAIRING_CLOSED_CALLBACK);
+            return;
+        }
+
         String[] parts = callback.getData().split(":", -1);
         if (parts.length < 4 || parts.length > 5) {
             responder.answerCallback(callback.getId(), BotMessages.STALE_BUTTON);
@@ -548,6 +554,9 @@ final class BotButtonController {
         } catch (IllegalArgumentException exception) {
             responder.sendText(userId, BotMessages.PARTICIPANT_LIST_CHANGED);
             responder.answerCallback(callback.getId(), BotMessages.PAIRING_FAILED_CALLBACK);
+        } catch (IllegalStateException exception) {
+            responder.sendText(userId, BotMessages.PAIRING_CLOSED);
+            responder.answerCallback(callback.getId(), BotMessages.PAIRING_CLOSED_CALLBACK);
         } catch (IOException exception) {
             LOGGER.log(Level.SEVERE, BotLogMessages.PAIRING_PERSIST_FAILED, exception);
             responder.sendText(userId, BotMessages.PAIR_PERSIST_FAILED);
@@ -571,7 +580,21 @@ final class BotButtonController {
             notifications.put(
                     change.formerPartnerOfSecond().chatId(), BotMessages.PAIR_CHANGED_UNPAIRED);
         }
+        change.canceledRequests().forEach(request -> {
+            notifications.merge(
+                    request.requesterId(),
+                    BotMessages.PAIR_REQUEST_CANCELED_BY_ORGANIZER,
+                    BotButtonController::appendNotification);
+            notifications.merge(
+                    request.requestedPartnerId(),
+                    BotMessages.PAIR_REQUEST_CANCELED_BY_ORGANIZER,
+                    BotButtonController::appendNotification);
+        });
         notifications.forEach(responder::sendText);
+    }
+
+    private static String appendNotification(String existing, String added) {
+        return existing + "\n" + added;
     }
 
     private static String pairingChangeMessage(ExchangeService.PairingChange change) {

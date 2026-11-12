@@ -1,6 +1,7 @@
 package com.secretsanta;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -779,6 +780,82 @@ class SecretSantaBotTest {
         assertTrue(notifications.stream().allMatch(message ->
                 !message.text().contains("Твоя ціль")
                         && !message.text().contains("купити подарунок")));
+    }
+
+    @Test
+    void organizerPairingNotifiesParticipantWhoseOpenRequestWasRemoved() throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+        String inviteCode = openRegistration(bot, messenger);
+        for (long userId = 201L; userId <= 203L; userId++) {
+            bot.onUpdateReceived(update(
+                    userId, userId, "private", "/join " + inviteCode + " Guest " + userId));
+        }
+
+        bot.onUpdateReceived(update(201L, 201L, "private", "/start"));
+        bot.onUpdateReceived(callbackUpdate(
+                callbackDataFor(messenger.sentMessages.getLast().keyboard(), "Запросити пару"),
+                201L,
+                201L,
+                "choose"));
+        bot.onUpdateReceived(callbackUpdate(
+                callbackDataFor(messenger.sentMessages.getLast().keyboard(), "Guest 202"),
+                201L,
+                201L,
+                "request"));
+        ExchangeService exchangeService =
+                new ExchangeService(organizerService, new ExchangeStore(dataDirectory, TEST_DATA_KEY));
+        assertEquals(
+                List.of(new ExchangeState.PairRequest(201L, 202L)),
+                exchangeService.state().pairRequests());
+        assertNull(exchangeService.participant(201L).orElseThrow().partnerId());
+        assertNull(exchangeService.participant(202L).orElseThrow().partnerId());
+        int notificationsBeforePairing = messenger.sentMessages.size();
+
+        pairParticipants(bot, messenger, "Guest 201", "Guest 203");
+
+        List<SentMessage> notifications =
+                messenger.sentMessages.subList(notificationsBeforePairing, messenger.sentMessages.size());
+        assertTrue(notifications.stream()
+                .anyMatch(message -> message.chatId() == 202L
+                        && message.text().contains("запит на пару скасовано")));
+        assertTrue(new ExchangeService(
+                        organizerService, new ExchangeStore(dataDirectory, TEST_DATA_KEY))
+                .state().pairRequests().isEmpty());
+    }
+
+    @Test
+    void staleOrganizerPairButtonCannotChangePairsAfterRegistrationCloses() throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+        String inviteCode = openRegistration(bot, messenger);
+        bot.onUpdateReceived(update(201L, 201L, "private", "/join " + inviteCode + " Alex"));
+        bot.onUpdateReceived(update(202L, 202L, "private", "/join " + inviteCode + " Sam"));
+
+        bot.onUpdateReceived(update(100L, 100L, "private", "/pair"));
+        bot.onUpdateReceived(callbackUpdate(
+                callbackDataFor(messenger.sentMessages.getLast().keyboard(), "Alex"),
+                100L,
+                100L,
+                "first"));
+        String staleSecondChoice = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Sam");
+        messenger.failChatId = 202L;
+        bot.onUpdateReceived(update(100L, 100L, "private", "/run"));
+
+        assertDoesNotThrow(() -> bot.onUpdateReceived(callbackUpdate(
+                staleSecondChoice, 100L, 100L, "stale-second")));
+        assertTrue(messenger.callbackAnswers.getLast().text()
+                .contains(BotMessages.PAIRING_CLOSED_CALLBACK));
+        ExchangeService closedExchangeService = new ExchangeService(
+                organizerService, new ExchangeStore(dataDirectory, TEST_DATA_KEY));
+        assertEquals(
+                ExchangeState.Phase.REGISTRATION_CLOSED,
+                closedExchangeService.state().phase());
+        assertNull(closedExchangeService.participant(201L).orElseThrow().partnerId());
+        assertNull(closedExchangeService.participant(202L).orElseThrow().partnerId());
     }
 
     @Test
