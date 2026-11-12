@@ -8,7 +8,6 @@ import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 
@@ -339,7 +338,9 @@ public class SecretSantaBot extends TelegramLongPollingBot {
                 sendWithKeyboard(
                         chatId,
                         "🎅 **Таємний Санта**\n\nОбери дію для свого обміну.",
-                        organizerMenu());
+                        BotButtons.organizerMenu(
+                                exchangeService.state().phase()
+                                        == ExchangeState.Phase.REGISTRATION_OPEN));
                 return;
             }
         } catch (IOException exception) {
@@ -351,9 +352,7 @@ public class SecretSantaBot extends TelegramLongPollingBot {
         sendWithKeyboard(
                 chatId,
                 "🎅 **Таємний Санта**\n\nСтвори обмін або приєднайся за запрошенням.",
-                keyboard(List.of(
-                        List.of(button("Я організатор", "onboarding:claim")),
-                        List.of(button("Приєднатися за кодом", "onboarding:join")))));
+                BotButtons.participantStartMenu());
     }
 
     private void handlePendingInput(long userId, String firstName, String input) {
@@ -415,11 +414,7 @@ public class SecretSantaBot extends TelegramLongPollingBot {
         sendWithKeyboard(
                 userId,
                 "Приєднатися до обміну як **" + escapeMarkdown(name) + "**?",
-                keyboard(List.of(
-                        List.of(button(
-                                "Підтвердити ім'я",
-                                "onboarding:join:confirm")),
-                        List.of(button("Змінити ім'я", "onboarding:join:edit")))));
+                BotButtons.joinConfirmation());
     }
 
     private void confirmJoin(long userId, String callbackId) {
@@ -478,18 +473,18 @@ public class SecretSantaBot extends TelegramLongPollingBot {
 
     private void handleOnboardingCallback(CallbackQuery callback, long userId) {
         String data = callback.getData();
-        if ("onboarding:claim".equals(data)) {
+        if (BotButtons.CLAIM.equals(data)) {
             pendingInputs.put(userId, PendingInput.SETUP_CODE);
             sendText(userId, "Введи код налаштування, щоб підтвердити права організатора.");
             answerCallback(callback.getId(), "Введи код у цьому особистому чаті.");
-        } else if ("onboarding:join".equals(data)) {
+        } else if (BotButtons.JOIN.equals(data)) {
             pendingInputs.put(userId, PendingInput.INVITE_CODE);
             pendingJoins.remove(userId);
             sendText(userId, "Введи запрошувальний код обміну.");
             answerCallback(callback.getId(), "Введи код у цьому особистому чаті.");
-        } else if ("onboarding:join:confirm".equals(data)) {
+        } else if (BotButtons.JOIN_CONFIRM.equals(data)) {
             confirmJoin(userId, callback.getId());
-        } else if ("onboarding:join:edit".equals(data)) {
+        } else if (BotButtons.JOIN_EDIT.equals(data)) {
             if (!pendingJoins.containsKey(userId)) {
                 answerCallback(callback.getId(), "Запит застарів. Почни з `/start`.");
                 return;
@@ -497,11 +492,11 @@ public class SecretSantaBot extends TelegramLongPollingBot {
             pendingInputs.put(userId, PendingInput.JOIN_NAME);
             sendText(userId, "Введи ім'я, яке побачать учасники.");
             answerCallback(callback.getId(), "Введи ім'я в чаті.");
-        } else if ("onboarding:open".equals(data)) {
+        } else if (BotButtons.OPEN.equals(data)) {
             openRegistrationFromButton(callback);
-        } else if ("onboarding:reset".equals(data)) {
+        } else if (BotButtons.RESET.equals(data)) {
             requestResetConfirmation(userId, callback.getId());
-        } else if (data != null && data.startsWith("onboarding:reset:")) {
+        } else if (data != null && data.startsWith(BotButtons.RESET + ":")) {
             confirmReset(userId, callback.getId(), data);
         } else {
             answerCallback(callback.getId(), "Ця кнопка більше неактивна.");
@@ -517,7 +512,9 @@ public class SecretSantaBot extends TelegramLongPollingBot {
                     userId,
                     "✅ Реєстрацію відкрито.\nЗапрошувальний код: "
                             + "`" + inviteCode + "`",
-                    organizerMenu());
+                    BotButtons.organizerMenu(
+                            exchangeService.state().phase()
+                                    == ExchangeState.Phase.REGISTRATION_OPEN));
         } catch (PendingDrawService.PendingDrawInProgressException exception) {
             answerCallback(callback.getId(), "Є незавершений розподіл.");
             sendText(userId, "❌ Є незавершений розподіл. Повтори `/run`.");
@@ -549,9 +546,7 @@ public class SecretSantaBot extends TelegramLongPollingBot {
         sendWithKeyboard(
                 userId,
                 "Скинути обмін і видалити поточний список учасників?",
-                keyboard(List.of(
-                        List.of(button("Так, скинути", "onboarding:reset:confirm:" + token)),
-                        List.of(button("Скасувати", "onboarding:reset:cancel:" + token)))));
+                BotButtons.resetConfirmation(token));
         answerCallback(callbackId, "Підтверди або скасуй скидання.");
     }
 
@@ -600,28 +595,6 @@ public class SecretSantaBot extends TelegramLongPollingBot {
         return false;
     }
 
-    private InlineKeyboardMarkup organizerMenu() {
-        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-        rows.add(List.of(button("Відкрити реєстрацію", "onboarding:open")));
-        if (exchangeService.state().phase() == ExchangeState.Phase.REGISTRATION_OPEN) {
-            rows.add(List.of(button("Скинути обмін", "onboarding:reset")));
-        }
-        return keyboard(rows);
-    }
-
-    private static InlineKeyboardButton button(String text, String callbackData) {
-        InlineKeyboardButton button = new InlineKeyboardButton();
-        button.setText(text);
-        button.setCallbackData(callbackData);
-        return button;
-    }
-
-    private static InlineKeyboardMarkup keyboard(List<List<InlineKeyboardButton>> rows) {
-        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
-        keyboard.setKeyboard(rows);
-        return keyboard;
-    }
-
     private synchronized void startPairing(long organizerId) {
         List<Participant> roster = exchangeService.participants();
         if (roster.size() < 2) {
@@ -637,7 +610,10 @@ public class SecretSantaBot extends TelegramLongPollingBot {
         sendWithKeyboard(
                 organizerId,
                 "Обери першого учасника:",
-                pairingKeyboard(roster, "pair:first:" + activePairingSessionToken + ":", null));
+                BotButtons.pairing(
+                        roster,
+                        BotButtons.PAIR_PREFIX + "first:" + activePairingSessionToken + ":",
+                        null));
     }
 
     private synchronized void handleCallbackQuery(CallbackQuery callback) {
@@ -655,7 +631,7 @@ public class SecretSantaBot extends TelegramLongPollingBot {
             return;
         }
         if (callback.getData() != null
-                && callback.getData().startsWith("onboarding:")) {
+                && callback.getData().startsWith(BotButtons.ONBOARDING_PREFIX)) {
             handleOnboardingCallback(callback, userId);
             return;
         }
@@ -726,9 +702,9 @@ public class SecretSantaBot extends TelegramLongPollingBot {
             sendWithKeyboard(
                     userId,
                     "Обери партнера для " + escapeMarkdown(selected.name()) + ":",
-                    pairingKeyboard(
+                    BotButtons.pairing(
                             roster,
-                            "pair:second:" + activePairingSessionToken + ":"
+                            BotButtons.PAIR_PREFIX + "second:" + activePairingSessionToken + ":"
                                     + selectedId + ":",
                             selectedId));
             answerCallback(callback.getId(), "Обери другого учасника.");
@@ -758,24 +734,6 @@ public class SecretSantaBot extends TelegramLongPollingBot {
             sendText(userId, "❌ Не вдалося зберегти пару. Спробуй пізніше.");
             answerCallback(callback.getId(), "Не вдалося зберегти пару.");
         }
-    }
-
-    private static InlineKeyboardMarkup pairingKeyboard(
-            List<Participant> participants, String callbackPrefix, Long excludedParticipantId) {
-        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-        for (Participant participant : participants) {
-            if (excludedParticipantId != null
-                    && participant.chatId() == excludedParticipantId) {
-                continue;
-            }
-            InlineKeyboardButton button = new InlineKeyboardButton();
-            button.setText(participant.name());
-            button.setCallbackData(callbackPrefix + participant.chatId());
-            rows.add(List.of(button));
-        }
-        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
-        keyboard.setKeyboard(rows);
-        return keyboard;
     }
 
     private static String pairingChangeMessage(ExchangeService.PairingChange change) {
