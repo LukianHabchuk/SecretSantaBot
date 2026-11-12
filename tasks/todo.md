@@ -174,28 +174,31 @@ notify affected participants privately when the organizer changes a pair.
 
 ## Task 12: Retaining and delivering durable draws
 
+**Status:** Complete.
+
 **Description:** Integrate assignment generation with the exchange snapshot.
 Close registration, persist a complete draw before sending, track delivery, and
 retry that exact draw. Migrate any existing encrypted pending draw without
 discarding partially delivered assignments.
 
 **Acceptance criteria:**
-- [ ] A complete valid draw is persisted before any Telegram send; invalid draws
+- [x] A complete valid draw is persisted before any Telegram send; invalid draws
   send nothing and leave the roster correctable.
-- [ ] A draw is rejected until all pair requests are accepted, declined, or
+- [x] A draw is rejected until all pair requests are accepted, declined, or
   canceled.
-- [ ] Each participant, including the organizer, receives only their own
+- [x] Each participant, including the organizer, receives only their own
   assignment; completed delivery retains the exchange and encrypted draw.
-- [ ] Failed delivery and restart retry only undelivered recipients using the
+- [x] Failed delivery and restart retry only undelivered recipients using the
   same assignments.
-- [ ] Legacy `pending-draw.enc` is migrated idempotently; the legacy file is
+- [x] Legacy `pending-draw.enc` is migrated idempotently; the legacy file is
   removed only after the new encrypted state is saved successfully.
 
 **Verification:**
-- [ ] Service/store tests cover no partial draw, same-draw retry, restart,
+- [x] Service/store tests cover no partial draw, same-draw retry, restart,
   legacy migration, write failure, wrong key, and retained completed delivery.
-- [ ] Captured organizer messages and logs contain no full assignment mapping.
-- [ ] `mvn test` passes.
+- [x] Private delivery tests confirm participants, including the organizer,
+  receive only their own assignment; logs contain no assignment mapping.
+- [x] `mvn test` passes (106 tests); Java 27 Docker build passes.
 
 **Dependencies:** Tasks 7, 8, and 11
 

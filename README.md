@@ -155,10 +155,13 @@ roster view shows pair/request status only, never assignment recipients.
 The organizer starts the draw with `/run`. The bot saves the complete encrypted
 draw before sending any assignments. If any private delivery fails, the
 organizer is told to retry with `/run`; the bot retries only undelivered messages
-using the same assignments. A pending draw survives restarts, blocks `/open`,
-and is deleted only after all assignments are delivered. If Telegram accepted a
-message just before the process stopped, retrying may send that same assignment
-again. Run only one bot process against a data directory at a time.
+using the same assignments. The encrypted draw and roster survive restarts and
+remain stored after delivery; new registration stays blocked until guarded
+cleanup is available. Legacy encrypted `pending-draw.enc` data is migrated
+before normal bot operations; partial deliveries resume with the original
+assignments. If Telegram accepted a message just before the process stopped,
+retrying may send that same assignment again. Run only one bot process against a
+data directory at a time.
 
 ## Project layout
 

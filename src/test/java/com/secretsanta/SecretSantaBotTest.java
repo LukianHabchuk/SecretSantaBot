@@ -852,7 +852,7 @@ class SecretSantaBotTest {
         ExchangeService closedExchangeService = new ExchangeService(
                 organizerService, new ExchangeStore(dataDirectory, TEST_DATA_KEY));
         assertEquals(
-                ExchangeState.Phase.REGISTRATION_CLOSED,
+                ExchangeState.Phase.DELIVERING,
                 closedExchangeService.state().phase());
         assertNull(closedExchangeService.participant(201L).orElseThrow().partnerId());
         assertNull(closedExchangeService.participant(202L).orElseThrow().partnerId());
@@ -876,12 +876,16 @@ class SecretSantaBotTest {
         String failureNotice = messenger.sentMessages.getLast().text();
         assertTrue(failureNotice.contains("повтори `/run`"));
         assertFalse(failureNotice.contains("успішно завершено"));
-        assertTrue(new PendingDrawStore(dataDirectory, TEST_DATA_KEY).load().isPresent());
+        assertTrue(new PendingDrawStore(dataDirectory, TEST_DATA_KEY).load().isEmpty());
+        ExchangeState pendingState =
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow();
+        assertEquals(ExchangeState.Phase.DELIVERING, pendingState.phase());
+        assertEquals(4, pendingState.assignments().size());
         bot.onUpdateReceived(update(100L, 100L, "private", "/list"));
         assertTrue(messenger.sentMessages.getLast().text().contains("Guest 203"));
 
         bot.onUpdateReceived(update(100L, 100L, "private", "/open"));
-        assertTrue(messenger.sentMessages.getLast().text().contains("незавершений розподіл"));
+        assertTrue(messenger.sentMessages.getLast().text().contains("активний обмін"));
         bot.onUpdateReceived(update(100L, 100L, "private", "/pair"));
         assertTrue(messenger.sentMessages.getLast().text().contains("змінювати пари не можна"));
 
@@ -890,6 +894,11 @@ class SecretSantaBotTest {
 
         assertTrue(messenger.sentMessages.getLast().text().contains("успішно завершено"));
         assertTrue(new PendingDrawStore(dataDirectory, TEST_DATA_KEY).load().isEmpty());
+        ExchangeState completedState =
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow();
+        assertEquals(ExchangeState.Phase.AWAITING_CONFIRMATIONS, completedState.phase());
+        assertEquals(4, completedState.participants().size());
+        assertEquals(4, completedState.assignments().size());
     }
 
     private OrganizerService createService() {

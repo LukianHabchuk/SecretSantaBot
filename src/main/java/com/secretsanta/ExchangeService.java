@@ -290,6 +290,128 @@ final class ExchangeService {
         persist(ExchangeState.empty());
     }
 
+    synchronized void beginDraw(List<ExchangeState.Assignment> assignments) throws IOException {
+        requireRegistrationOpen();
+        if (!state.pairRequests().isEmpty()) {
+            throw new IllegalStateException(
+                    "Pair requests must be resolved before assignment.");
+        }
+        ExchangeState nextState = new ExchangeState(
+                ExchangeState.Phase.DELIVERING,
+                null,
+                state.participants(),
+                List.of(),
+                state.drawGeneration() + 1,
+                assignments,
+                Set.of(),
+                Set.of());
+        persist(nextState);
+        organizerService.closeRegistration();
+    }
+
+    synchronized void markAssignmentDelivered(long giverId) throws IOException {
+        if (state.phase() != ExchangeState.Phase.DELIVERING
+                || state.assignments().stream().noneMatch(
+                        assignment -> assignment.giverId() == giverId)) {
+            throw new IllegalArgumentException("Assignment delivery is not pending.");
+        }
+        if (state.deliveredUserIds().contains(giverId)) {
+            return;
+        }
+
+        Set<Long> deliveredUserIds = new java.util.HashSet<>(state.deliveredUserIds());
+        deliveredUserIds.add(giverId);
+        Set<Long> giverIds = state.assignments().stream()
+                .map(ExchangeState.Assignment::giverId)
+                .collect(java.util.stream.Collectors.toSet());
+        ExchangeState.Phase phase = deliveredUserIds.equals(giverIds)
+                ? ExchangeState.Phase.AWAITING_CONFIRMATIONS
+                : ExchangeState.Phase.DELIVERING;
+        persist(new ExchangeState(
+                phase,
+                null,
+                state.participants(),
+                List.of(),
+                state.drawGeneration(),
+                state.assignments(),
+                deliveredUserIds,
+                state.confirmedUserIds()));
+    }
+
+    synchronized boolean hasActiveDraw() {
+        return state.phase() == ExchangeState.Phase.DELIVERING
+                || state.phase() == ExchangeState.Phase.AWAITING_CONFIRMATIONS;
+    }
+
+    synchronized void migrateLegacyDraw(PendingDrawStore.PendingDraw legacyDraw)
+            throws IOException {
+        Map<Long, String> legacyNames = new LinkedHashMap<>();
+        List<ExchangeState.Assignment> assignments = new ArrayList<>();
+        for (PendingDrawStore.Assignment assignment : legacyDraw.assignments()) {
+            addLegacyName(legacyNames, assignment.giverId(), assignment.giverName());
+            addLegacyName(legacyNames, assignment.receiverId(), assignment.receiverName());
+            assignments.add(new ExchangeState.Assignment(
+                    assignment.giverId(), assignment.receiverId()));
+        }
+        Set<Long> deliveredUserIds = legacyDraw.deliveredGiverIds();
+
+        if (hasActiveDraw()) {
+            Map<Long, String> persistedNames = new LinkedHashMap<>();
+            state.participants().forEach(participant ->
+                    persistedNames.put(participant.userId(), participant.name()));
+            if (!state.assignments().equals(assignments)
+                    || !state.deliveredUserIds().equals(deliveredUserIds)
+                    || !persistedNames.equals(legacyNames)) {
+                throw new IOException("Legacy draw conflicts with persisted exchange state.");
+            }
+            verifyPersistedState(state);
+            return;
+        }
+        if (state.phase() != ExchangeState.Phase.EMPTY
+                && state.phase() != ExchangeState.Phase.REGISTRATION_OPEN
+                && state.phase() != ExchangeState.Phase.REGISTRATION_CLOSED) {
+            throw new IOException("Legacy draw cannot be migrated into the current exchange.");
+        }
+        if (!state.pairRequests().isEmpty()) {
+            throw new IOException("Legacy draw conflicts with unresolved pair requests.");
+        }
+
+        List<ExchangeState.Participant> participants = state.participants().isEmpty()
+                ? legacyNames.entrySet().stream()
+                        .map(entry -> new ExchangeState.Participant(
+                                entry.getKey(), entry.getValue(), null))
+                        .toList()
+                : state.participants();
+        Map<Long, String> currentNames = new LinkedHashMap<>();
+        participants.forEach(participant ->
+                currentNames.put(participant.userId(), participant.name()));
+        if (!currentNames.equals(legacyNames)) {
+            throw new IOException("Legacy draw participants conflict with persisted roster.");
+        }
+
+        Set<Long> giverIds = assignments.stream()
+                .map(ExchangeState.Assignment::giverId)
+                .collect(java.util.stream.Collectors.toSet());
+        ExchangeState.Phase phase = deliveredUserIds.equals(giverIds)
+                ? ExchangeState.Phase.AWAITING_CONFIRMATIONS
+                : ExchangeState.Phase.DELIVERING;
+        try {
+            ExchangeState migratedState = new ExchangeState(
+                    phase,
+                    null,
+                    participants,
+                    List.of(),
+                    Math.max(1, state.drawGeneration() + 1),
+                    assignments,
+                    deliveredUserIds,
+                    Set.of());
+            persist(migratedState);
+            verifyPersistedState(migratedState);
+        } catch (IllegalArgumentException exception) {
+            throw new IOException("Legacy draw data is invalid for the persisted roster.", exception);
+        }
+    }
+
     synchronized void closeRegistration() throws IOException {
         if (state.phase() == ExchangeState.Phase.REGISTRATION_OPEN) {
             if (!state.pairRequests().isEmpty()) {
@@ -414,6 +536,20 @@ final class ExchangeService {
     private void persist(ExchangeState nextState) throws IOException {
         store.save(nextState);
         state = nextState;
+    }
+
+    private void verifyPersistedState(ExchangeState expected) throws IOException {
+        if (!store.load().filter(expected::equals).isPresent()) {
+            throw new IOException("Persisted exchange state verification failed.");
+        }
+    }
+
+    private static void addLegacyName(Map<Long, String> names, long userId, String name)
+            throws IOException {
+        String existing = names.putIfAbsent(userId, name);
+        if (existing != null && !existing.equals(name)) {
+            throw new IOException("Legacy draw contains conflicting participant names.");
+        }
     }
 
     private static boolean matchesInviteCode(String expectedCode, String providedCode) {

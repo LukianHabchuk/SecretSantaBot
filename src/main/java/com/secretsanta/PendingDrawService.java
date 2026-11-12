@@ -1,11 +1,10 @@
 package com.secretsanta;
 
 import java.io.IOException;
-import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
@@ -35,6 +34,7 @@ final class PendingDrawService {
         this.exchangeService = Objects.requireNonNull(exchangeService);
         this.organizerService = Objects.requireNonNull(organizerService);
         this.telegramMessenger = Objects.requireNonNull(telegramMessenger);
+        migrateLegacyDraw();
     }
 
     String openRegistration(long organizerId) throws IOException {
@@ -59,14 +59,14 @@ final class PendingDrawService {
 
     boolean hasPendingDraw() throws IOException {
         try (PendingDrawStore.LockHandle ignored = store.acquireDrawLock()) {
-            return store.load().isPresent();
+            return store.load().isPresent() || exchangeService.hasActiveDraw();
         }
     }
 
     Result run() throws IOException {
         try (PendingDrawStore.LockHandle ignored = store.acquireDrawLock()) {
-            PendingDrawStore.PendingDraw pendingDraw = store.load().orElse(null);
-            if (pendingDraw == null) {
+            ExchangeState state = exchangeService.state();
+            if (state.phase() == ExchangeState.Phase.REGISTRATION_OPEN) {
                 if (exchangeService.hasOpenPairRequests()) {
                     throw new IllegalStateException(
                             "Pair requests must be resolved before assignment.");
@@ -78,27 +78,35 @@ final class PendingDrawService {
 
                 Map<SecretSantaBot.Participant, SecretSantaBot.Participant> assignments =
                         AssignmentGenerator.generate(participants);
-                List<PendingDrawStore.Assignment> persistedAssignments = new ArrayList<>();
-                assignments.forEach((giver, receiver) -> persistedAssignments.add(
-                        new PendingDrawStore.Assignment(
-                                giver.chatId(), giver.name(), receiver.chatId(), receiver.name())));
-                pendingDraw = new PendingDrawStore.PendingDraw(
-                        persistedAssignments, Set.of());
-
-                store.save(pendingDraw);
+                List<ExchangeState.Assignment> persistedAssignments = assignments.entrySet()
+                        .stream()
+                        .map(entry -> new ExchangeState.Assignment(
+                                entry.getKey().chatId(), entry.getValue().chatId()))
+                        .toList();
+                exchangeService.beginDraw(persistedAssignments);
+                state = exchangeService.state();
+            } else if (state.phase() == ExchangeState.Phase.AWAITING_CONFIRMATIONS) {
+                return new Result(Status.COMPLETED, 0);
+            } else if (state.phase() != ExchangeState.Phase.DELIVERING) {
+                if (state.participants().size() < 2) {
+                    return new Result(Status.TOO_FEW_PARTICIPANTS, 0);
+                }
+                throw new IllegalStateException("Registration must be open before assignment.");
             }
-            exchangeService.closeRegistration();
 
+            Map<Long, String> participantNames = new LinkedHashMap<>();
+            state.participants().forEach(participant ->
+                    participantNames.put(participant.userId(), participant.name()));
             int failedDeliveries = 0;
-            for (PendingDrawStore.Assignment assignment : pendingDraw.assignments()) {
-                if (pendingDraw.deliveredGiverIds().contains(assignment.giverId())) {
+            for (ExchangeState.Assignment assignment : state.assignments()) {
+                if (state.deliveredUserIds().contains(assignment.giverId())) {
                     continue;
                 }
 
                 try {
                     telegramMessenger.sendMessage(
                             assignment.giverId(),
-                            assignmentMessage(assignment.receiverName()),
+                            assignmentMessage(participantNames.get(assignment.receiverId())),
                             null);
                 } catch (TelegramApiException exception) {
                     failedDeliveries++;
@@ -109,16 +117,26 @@ final class PendingDrawService {
                     continue;
                 }
 
-                pendingDraw = pendingDraw.markDelivered(assignment.giverId());
-                store.save(pendingDraw);
+                exchangeService.markAssignmentDelivered(assignment.giverId());
+                state = exchangeService.state();
             }
 
-            if (pendingDraw.deliveredGiverIds().size() == pendingDraw.assignments().size()) {
-                store.delete();
-                exchangeService.clearParticipants();
+            if (state.phase() == ExchangeState.Phase.AWAITING_CONFIRMATIONS) {
                 return new Result(Status.COMPLETED, 0);
             }
             return new Result(Status.PENDING, failedDeliveries);
+        }
+    }
+
+    private void migrateLegacyDraw() {
+        try (PendingDrawStore.LockHandle ignored = store.acquireDrawLock()) {
+            PendingDrawStore.PendingDraw legacyDraw = store.load().orElse(null);
+            if (legacyDraw != null) {
+                exchangeService.migrateLegacyDraw(legacyDraw);
+                store.delete();
+            }
+        } catch (IOException exception) {
+            throw new IllegalStateException("Could not migrate the persisted pending draw.", exception);
         }
     }
 

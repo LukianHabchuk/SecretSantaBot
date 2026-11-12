@@ -38,9 +38,9 @@ final class BotMessages {
     static final String REGISTRATION_CLOSED_FINAL = "❌ Реєстрація зараз закрита.";
     static final String REGISTRATION_FAILED = "❌ Не вдалося зберегти реєстрацію. Спробуй пізніше.";
     static final String REGISTRATION_OPEN_CALLBACK = "Реєстрацію відкрито.";
-    static final String PENDING_DRAW_CALLBACK = "Є незавершений розподіл.";
+    static final String PENDING_DRAW_CALLBACK = "Є активний обмін.";
     static final String PENDING_DRAW_RETRY =
-            "❌ Є незавершений розподіл. Повтори `/run`.";
+            "❌ Є активний обмін. Нову реєстрацію відкрити не можна.";
     static final String PROFILE_NAME_CALLBACK = "Не вдалося використати ім'я профілю.";
     static final String PROFILE_NAME_INVALID = "❌ Не вдалося використати ім'я з профілю Telegram.";
     static final String ORGANIZER_ONLY_CALLBACK = "Дія доступна лише організатору.";
@@ -111,7 +111,7 @@ final class BotMessages {
             "❌ Не вдалося отримати права організатора. Перевір код або звернись до власника.";
     static final String OPEN_USAGE = "❌ Використання: `/open`.";
     static final String OPEN_PENDING_DRAW =
-            "❌ Є незавершений розподіл. Повтори `/run`; нову реєстрацію відкрити не можна.";
+            "❌ Є активний обмін. Нову реєстрацію відкрити не можна.";
     static final String OPEN_ORGANIZER_ONLY = "❌ Лише організатор може відкрити реєстрацію.";
     static final String JOIN_PRIVATE_ONLY = "❌ Приєднатися можна лише в особистому чаті.";
     static final String JOIN_USAGE = "❌ Використання: `/join <код> <ім'я>`.";
@@ -129,7 +129,7 @@ final class BotMessages {
             "❌ Не вдалося перевірити права організатора. Спробуй пізніше.";
     static final String PAIR_USAGE = "❌ Використання: `/pair`.";
     static final String PAIR_PENDING_DRAW =
-            "❌ Поки розподіл не завершено, змінювати пари не можна.";
+            "❌ Після початку розподілу змінювати пари не можна.";
     static final String PAIR_PENDING_DRAW_CHECK_FAILED =
             "❌ Не вдалося перевірити стан розподілу. Спробуй пізніше.";
     static final String RUN_TOO_FEW = "❌ Замало учасників для розподілу (потрібно мінімум 2).";

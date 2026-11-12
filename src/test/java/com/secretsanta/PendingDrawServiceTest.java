@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
@@ -30,11 +31,12 @@ class PendingDrawServiceTest {
                 new PendingDrawService(store, exchangeService, organizerService, firstMessenger);
 
         PendingDrawService.Result firstResult = firstService.run();
-        PendingDrawStore.PendingDraw persistedDraw = store.load().orElseThrow();
+        ExchangeState persistedDraw = exchangeService.state();
 
         assertEquals(PendingDrawService.Status.PENDING, firstResult.status());
         assertEquals(1, firstResult.failedDeliveries());
-        assertEquals(3, persistedDraw.deliveredGiverIds().size());
+        assertEquals(ExchangeState.Phase.DELIVERING, persistedDraw.phase());
+        assertEquals(3, persistedDraw.deliveredUserIds().size());
         assertFalse(organizerService.isRegistrationOpen());
 
         OrganizerService restartedOrganizerService = createOrganizerService();
@@ -52,11 +54,15 @@ class PendingDrawServiceTest {
         assertEquals(PendingDrawService.Status.COMPLETED, retryResult.status());
         assertEquals(0, retryResult.failedDeliveries());
         assertEquals(1, retryMessenger.messages().size());
-        PendingDrawStore.Assignment failedAssignment = persistedDraw.assignments().stream()
+        ExchangeState.Assignment failedAssignment = persistedDraw.assignments().stream()
                 .filter(assignment -> assignment.giverId() == 202L)
                 .findFirst()
                 .orElseThrow();
-        assertTrue(retryMessenger.messages().getFirst().text().contains(failedAssignment.receiverName()));
+        String receiverName = restartedExchangeService
+                .participant(failedAssignment.receiverId())
+                .orElseThrow()
+                .name();
+        assertTrue(retryMessenger.messages().getFirst().text().contains(receiverName));
         assertEquals(
                 firstMessenger.messages().stream()
                         .filter(message -> message.chatId() == 202L)
@@ -64,11 +70,16 @@ class PendingDrawServiceTest {
                         .orElseThrow()
                         .text(),
                 retryMessenger.messages().getFirst().text());
+        assertEquals(
+                ExchangeState.Phase.AWAITING_CONFIRMATIONS,
+                restartedExchangeService.state().phase());
+        assertEquals(persistedDraw.assignments(), restartedExchangeService.state().assignments());
+        assertEquals(4, restartedExchangeService.participants().size());
         assertTrue(store.load().isEmpty());
     }
 
     @Test
-    void retryInTheSameProcessClearsRosterOnlyAfterAllDeliveriesSucceed() throws Exception {
+    void retryInTheSameProcessRetainsRosterAfterAllDeliveriesSucceed() throws Exception {
         OrganizerService organizerService = createOrganizerService();
         ExchangeService exchangeService = createExchangeWithThreeParticipants(organizerService);
         PendingDrawStore store = new PendingDrawStore(dataDirectory, KEY);
@@ -81,7 +92,8 @@ class PendingDrawServiceTest {
         PendingDrawService.Result retryResult = service.run();
 
         assertEquals(PendingDrawService.Status.COMPLETED, retryResult.status());
-        assertTrue(exchangeService.participants().isEmpty());
+        assertEquals(ExchangeState.Phase.AWAITING_CONFIRMATIONS, exchangeService.state().phase());
+        assertEquals(4, exchangeService.participants().size());
         assertTrue(store.load().isEmpty());
         assertEquals(
                 2,
@@ -91,7 +103,7 @@ class PendingDrawServiceTest {
     }
 
     @Test
-    void wrongKeyPreventsDeliveryAndPreservesThePendingDraw() throws Exception {
+    void wrongKeyPreventsLoadingThePersistedDrawWithoutSendingAssignments() throws Exception {
         OrganizerService organizerService = createOrganizerService();
         ExchangeService exchangeService = createExchangeWithThreeParticipants(organizerService);
         PendingDrawStore originalStore = new PendingDrawStore(dataDirectory, KEY);
@@ -103,15 +115,21 @@ class PendingDrawServiceTest {
         byte[] wrongKey = new byte[32];
         wrongKey[0] = 1;
         RecordingMessenger retryMessenger = new RecordingMessenger(null);
-        PendingDrawService restartedService = new PendingDrawService(
-                new PendingDrawStore(dataDirectory, wrongKey),
-                createExchangeService(createOrganizerService()),
-                createOrganizerService(),
-                retryMessenger);
 
-        assertThrows(IOException.class, restartedService::run);
+        assertThrows(
+                IllegalStateException.class,
+                () -> new PendingDrawService(
+                        new PendingDrawStore(dataDirectory, wrongKey),
+                        new ExchangeService(
+                                createOrganizerService(),
+                                new ExchangeStore(dataDirectory, wrongKey)),
+                        createOrganizerService(),
+                        retryMessenger));
         assertTrue(retryMessenger.messages().isEmpty());
-        assertTrue(originalStore.load().isPresent());
+        assertTrue(originalStore.load().isEmpty());
+        assertEquals(
+                ExchangeState.Phase.DELIVERING,
+                originalStore.exchangeStore().load().orElseThrow().phase());
     }
 
     @Test
@@ -131,6 +149,8 @@ class PendingDrawServiceTest {
 
         assertTrue(messenger.messages().isEmpty());
         assertEquals(3, exchangeService.participants().size());
+        assertEquals(ExchangeState.Phase.REGISTRATION_OPEN, exchangeService.state().phase());
+        assertTrue(organizerService.isRegistrationOpen());
         assertTrue(store.load().isEmpty());
     }
 
@@ -150,6 +170,176 @@ class PendingDrawServiceTest {
         assertTrue(store.load().isEmpty());
         assertEquals(ExchangeState.Phase.REGISTRATION_OPEN, exchangeService.state().phase());
         assertEquals(1, exchangeService.state().pairRequests().size());
+    }
+
+    @Test
+    void persistsCompleteDrawBeforeSendingAnyAssignment() throws Exception {
+        OrganizerService organizerService = createOrganizerService();
+        ExchangeStore exchangeStore = new ExchangeStore(dataDirectory, KEY);
+        ExchangeService exchangeService = createExchangeWithThreeParticipants(organizerService);
+        boolean[] persistedBeforeSend = {false};
+        TelegramMessenger messenger = new TelegramMessenger() {
+            @Override
+            public void sendMessage(
+                    long chatId, String text, InlineKeyboardMarkup keyboard) throws TelegramApiException {
+                try {
+                    ExchangeState state = exchangeStore.load().orElseThrow();
+                    assertEquals(ExchangeState.Phase.DELIVERING, state.phase());
+                    assertEquals(4, state.assignments().size());
+                    if (!persistedBeforeSend[0]) {
+                        assertTrue(state.deliveredUserIds().isEmpty());
+                    }
+                    persistedBeforeSend[0] = true;
+                } catch (IOException exception) {
+                    throw new TelegramApiException(exception);
+                }
+            }
+
+            @Override
+            public void answerCallback(String callbackQueryId, String text) {}
+        };
+        PendingDrawService service = new PendingDrawService(
+                new PendingDrawStore(dataDirectory, KEY),
+                exchangeService,
+                organizerService,
+                messenger);
+
+        service.run();
+
+        assertTrue(persistedBeforeSend[0]);
+    }
+
+    @Test
+    void privatelyDeliversOnlyEachParticipantsOwnAssignment() throws Exception {
+        OrganizerService organizerService = createOrganizerService();
+        ExchangeService exchangeService = createExchangeWithThreeParticipants(organizerService);
+        RecordingMessenger messenger = new RecordingMessenger(null);
+        PendingDrawService service = new PendingDrawService(
+                new PendingDrawStore(dataDirectory, KEY),
+                exchangeService,
+                organizerService,
+                messenger);
+
+        assertEquals(PendingDrawService.Status.COMPLETED, service.run().status());
+
+        ExchangeState state = exchangeService.state();
+        assertEquals(4, messenger.messages().size());
+        assertTrue(messenger.messages().stream().anyMatch(message -> message.chatId() == 100L));
+        for (ExchangeState.Assignment assignment : state.assignments()) {
+            SentMessage deliveredMessage = messenger.messages().stream()
+                    .filter(message -> message.chatId() == assignment.giverId())
+                    .findFirst()
+                    .orElseThrow();
+            String receiverName = exchangeService
+                    .participant(assignment.receiverId())
+                    .orElseThrow()
+                    .name();
+            assertTrue(deliveredMessage.text().contains(receiverName));
+            state.participants().stream()
+                    .filter(participant -> participant.userId() != assignment.receiverId())
+                    .forEach(participant ->
+                            assertFalse(deliveredMessage.text().contains(participant.name())));
+        }
+    }
+
+    @Test
+    void migratesLegacyDrawIdempotentlyBeforeRemovingLegacyFile() throws Exception {
+        OrganizerService organizerService = createOrganizerService();
+        ExchangeService exchangeService = createExchangeWithThreeParticipants(organizerService);
+        exchangeService.closeRegistration();
+        PendingDrawStore store = new PendingDrawStore(dataDirectory, KEY);
+        PendingDrawStore.PendingDraw legacyDraw = legacyDraw(Set.of(100L, 201L));
+        store.save(legacyDraw);
+
+        exchangeService.migrateLegacyDraw(legacyDraw);
+        ExchangeService restartedExchangeService =
+                createExchangeService(createOrganizerService());
+        new PendingDrawService(
+                store,
+                restartedExchangeService,
+                createOrganizerService(),
+                new RecordingMessenger(null));
+
+        ExchangeState migratedState = store.exchangeStore().load().orElseThrow();
+        assertEquals(ExchangeState.Phase.DELIVERING, migratedState.phase());
+        assertEquals(legacyDraw.deliveredGiverIds(), migratedState.deliveredUserIds());
+        assertEquals(
+                legacyDraw.assignments().stream()
+                        .map(assignment -> new ExchangeState.Assignment(
+                                assignment.giverId(), assignment.receiverId()))
+                        .toList(),
+                migratedState.assignments());
+        assertEquals(migratedState, restartedExchangeService.state());
+        assertTrue(store.load().isEmpty());
+    }
+
+    @Test
+    void preservesLegacyDrawWhenWritingMigratedStateFails() throws Exception {
+        OrganizerService organizerService = createOrganizerService();
+        ExchangeService exchangeService = createExchangeWithThreeParticipants(organizerService);
+        exchangeService.closeRegistration();
+        PendingDrawStore legacyStore = new PendingDrawStore(dataDirectory, KEY);
+        legacyStore.save(legacyDraw(Set.of(100L)));
+        ExchangeStore failingExchangeStore = new ExchangeStore(
+                dataDirectory,
+                KEY,
+                (source, target) -> {
+                    throw new IOException("Simulated exchange-state write failure.");
+                });
+        ExchangeService failingExchangeService =
+                new ExchangeService(organizerService, failingExchangeStore);
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> new PendingDrawService(
+                        legacyStore,
+                        failingExchangeService,
+                        organizerService,
+                        new RecordingMessenger(null)));
+
+        assertTrue(legacyStore.load().isPresent());
+        assertEquals(ExchangeState.Phase.REGISTRATION_CLOSED, exchangeService.state().phase());
+    }
+
+    @Test
+    void doesNotSendOrCloseRegistrationWhenPersistingNewDrawFails() throws Exception {
+        OrganizerService organizerService = createOrganizerService();
+        ExchangeService originalExchangeService =
+                createExchangeWithThreeParticipants(organizerService);
+        ExchangeService failingExchangeService = new ExchangeService(
+                organizerService,
+                new ExchangeStore(
+                        dataDirectory,
+                        KEY,
+                        (source, target) -> {
+                            throw new IOException("Simulated exchange-state write failure.");
+                        }));
+        RecordingMessenger messenger = new RecordingMessenger(null);
+        PendingDrawService service = new PendingDrawService(
+                new PendingDrawStore(dataDirectory, KEY),
+                failingExchangeService,
+                organizerService,
+                messenger);
+
+        assertThrows(IOException.class, service::run);
+
+        assertTrue(messenger.messages().isEmpty());
+        assertEquals(
+                ExchangeState.Phase.REGISTRATION_OPEN,
+                originalExchangeService.state().phase());
+        assertEquals(
+                ExchangeState.Phase.REGISTRATION_OPEN,
+                new ExchangeStore(dataDirectory, KEY).load().orElseThrow().phase());
+    }
+
+    private static PendingDrawStore.PendingDraw legacyDraw(Set<Long> deliveredGiverIds) {
+        return new PendingDrawStore.PendingDraw(
+                List.of(
+                        new PendingDrawStore.Assignment(100L, "Organizer", 201L, "Guest 201"),
+                        new PendingDrawStore.Assignment(201L, "Guest 201", 202L, "Guest 202"),
+                        new PendingDrawStore.Assignment(202L, "Guest 202", 203L, "Guest 203"),
+                        new PendingDrawStore.Assignment(203L, "Guest 203", 100L, "Organizer")),
+                deliveredGiverIds);
     }
 
     private OrganizerService createOrganizerService() throws Exception {
