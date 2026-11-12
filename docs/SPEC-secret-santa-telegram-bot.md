@@ -64,8 +64,9 @@ Java release reference: [Oracle Java SE Support Roadmap](https://www.oracle.com/
 - Run: `mvn exec:java`
 - Configure `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`,
   `SECRET_SANTA_SETUP_CODE`, and `SECRET_SANTA_DATA_KEY` in the process
-  environment before running. The data key is a stable Base64-encoded 256-bit
-  key. Never place real values in source control.
+  environment before running. Generate the setup code randomly and use at least
+  32 characters. The data key is a stable Base64-encoded 256-bit key. Never
+  place real values in source control.
 
 ## Project Structure
 - `src/main/java/` — bot entry point, Telegram update handling, assignment logic,
@@ -93,10 +94,10 @@ private void registerParticipant(Participant participant) {
 Do not place bot tokens or other credentials in source files or documentation.
 
 ## Functional Requirements
-1. The first user who claims organizer control using the one-time setup code
-   configured in `SECRET_SANTA_SETUP_CODE` becomes the sole organizer. The bot
-   persists only that organizer's Telegram user ID locally so the code cannot be
-   reused after restart.
+1. The first user who claims organizer control using the randomly generated,
+   at-least-32-character setup code configured in `SECRET_SANTA_SETUP_CODE`
+   becomes the sole organizer. The bot persists only that organizer's Telegram
+   user ID locally so the code cannot be reused after restart.
 2. The organizer opens registration. The bot generates an event invite code and
    sends it privately to the organizer. Participants join through a private chat
    using that code and register a display name. The code is valid only for the

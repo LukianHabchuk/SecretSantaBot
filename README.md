@@ -16,7 +16,8 @@ Provide these values through the process environment or a trusted secret manager
 
 - `TELEGRAM_BOT_TOKEN` — token issued by BotFather
 - `TELEGRAM_BOT_USERNAME` — bot username
-- `SECRET_SANTA_SETUP_CODE` — one-time organizer claim code
+- `SECRET_SANTA_SETUP_CODE` — one-time organizer claim code, at least 32
+  characters and randomly generated
 - `SECRET_SANTA_DATA_KEY` — stable Base64-encoded 256-bit key for pending draws
 
 The data key must remain the same while a draw is pending. Store it securely
@@ -85,11 +86,12 @@ $rng.GetBytes($bytes)
 $rng.Dispose()
 ```
 
-Paste the generated Base64 value into `SECRET_SANTA_DATA_KEY` in `.env`, and set
-the test bot token, username, and a long random setup code there. Keep `.env`
-local; it is ignored by Git. Never send tokens or encryption keys in chat or
-commit them. For a hosted deployment, inject secrets through the platform's
-secret manager rather than storing them in a repository or image.
+Paste the generated Base64 value into `SECRET_SANTA_DATA_KEY` in `.env`. Generate
+a separate random value for `SECRET_SANTA_SETUP_CODE` (it must be at least 32
+characters), and set the test bot token and username there. Keep `.env` local;
+it is ignored by Git. Never send tokens or encryption keys in chat or commit
+them. For a hosted deployment, inject secrets through the platform's secret
+manager rather than storing them in a repository or image.
 
 Start the test bot and inspect its logs:
 

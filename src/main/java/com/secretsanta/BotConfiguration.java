@@ -21,6 +21,12 @@ final class BotConfiguration {
     }
 
     static BotConfiguration from(Map<String, String> environment) {
+        String setupCode = required(environment, "SECRET_SANTA_SETUP_CODE");
+        if (setupCode.codePointCount(0, setupCode.length()) < 32) {
+            throw new IllegalArgumentException(
+                    "SECRET_SANTA_SETUP_CODE must contain at least 32 characters.");
+        }
+
         String encodedDataKey = required(environment, "SECRET_SANTA_DATA_KEY");
         byte[] dataKey;
         try {
@@ -37,7 +43,7 @@ final class BotConfiguration {
         return new BotConfiguration(
                 required(environment, "TELEGRAM_BOT_TOKEN"),
                 required(environment, "TELEGRAM_BOT_USERNAME"),
-                required(environment, "SECRET_SANTA_SETUP_CODE"),
+                setupCode,
                 dataKey);
     }
 
