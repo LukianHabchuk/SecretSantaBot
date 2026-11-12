@@ -1,24 +1,40 @@
 # Intent: Secret Santa Telegram Bot
 
 ## Outcome
-Build a simple Telegram Secret Santa bot for our friend group's Christmas exchange.
+Build a button-driven Telegram Secret Santa bot for one friend group's exchange,
+using private chats for setup, participation, and assignment delivery.
 
 ## Users
-Friends start the bot, join the exchange, and register themselves.
+The organizer opens one exchange and is automatically registered as a participant.
+Friends start the bot, enter the exchange's invitation code, and confirm or edit
+the first name the bot receives from their Telegram profile. Telegram identity is
+available only after someone presses Start or sends the bot a message.
 
 ## Why now
 Christmas is next month, and building a tool tailored to the group would be fun.
 
 ## Success
-After everyone registers, the organizer starts the draw. Each participant privately
-receives one recipient; nobody draws themselves or their partner, and every
-participant is assigned exactly once.
+The organizer shares a private invitation code, which remains valid until the
+draw starts. Participants can propose a partner; that person must accept before
+the pair is active. The organizer can review and directly change pairings.
+
+When ready, the organizer starts the assignment from a button. The bot closes
+registration and privately messages each participant, including the organizer,
+only their own recipient. Every participant gives to and receives from exactly
+one person; nobody draws themselves or their partner.
+
+The bot must not show or log the full giver-to-recipient mapping to the organizer.
+The organizer trusts the running application and its host; this is not protection
+against someone who can inspect the bot process or its secrets.
 
 ## Constraint
 Avoid sharing participant details with a separate Secret Santa website. Telegram is
 acceptable. Keep the first version focused on our group and easy to extend later.
+Use private chats; the bot cannot identify someone who only opens its profile.
 
 ## Out of scope for the first version
 - Email delivery
 - A public multi-group service
+- Multiple concurrent exchanges
+- Group-chat workflow
 - Arbitrary non-partner exclusions
