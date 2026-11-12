@@ -20,6 +20,12 @@ final class ExchangeService {
         INVALID_NAME
     }
 
+    enum InviteStatus {
+        VALID,
+        INVALID,
+        CLOSED
+    }
+
     record PairingChange(
             SecretSantaBot.Participant first,
             SecretSantaBot.Participant second,
@@ -129,6 +135,15 @@ final class ExchangeService {
                 state.deliveredUserIds(),
                 state.confirmedUserIds()));
         return RegistrationResult.REGISTERED;
+    }
+
+    synchronized InviteStatus inviteStatus(String inviteCode) {
+        if (state.phase() != ExchangeState.Phase.REGISTRATION_OPEN) {
+            return InviteStatus.CLOSED;
+        }
+        return matchesInviteCode(state.inviteCode(), inviteCode)
+                ? InviteStatus.VALID
+                : InviteStatus.INVALID;
     }
 
     synchronized List<SecretSantaBot.Participant> participants() {

@@ -31,8 +31,19 @@ public class SecretSantaBot extends TelegramLongPollingBot {
     private final PendingDrawService pendingDrawService;
     private Long pendingPairParticipantId;
     private String activePairingSessionToken;
+    private final Map<Long, PendingInput> pendingInputs = new HashMap<>();
+    private final Map<Long, PendingJoin> pendingJoins = new HashMap<>();
+    private final Map<Long, String> pendingResetTokens = new HashMap<>();
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final Base64.Encoder TOKEN_ENCODER = Base64.getUrlEncoder().withoutPadding();
+
+    private enum PendingInput {
+        SETUP_CODE,
+        INVITE_CODE,
+        JOIN_NAME
+    }
+
+    private record PendingJoin(String inviteCode, String suggestedName) {}
 
     SecretSantaBot(
             String botToken,
@@ -116,6 +127,11 @@ public class SecretSantaBot extends TelegramLongPollingBot {
         long userId = message.getFrom().getId();
         boolean privateChat = Boolean.TRUE.equals(message.getChat().isUserChat());
         String messageText = message.getText().strip();
+        PendingInput pendingInput = pendingInputs.get(userId);
+        if (privateChat && pendingInput != null && !messageText.startsWith("/")) {
+            handlePendingInput(userId, message.getFrom().getFirstName(), messageText);
+            return;
+        }
         String[] parts = messageText.split("\\s+", 2);
         String command = parts[0].toLowerCase(Locale.ROOT);
         String arguments = parts.length > 1 ? parts[1].strip() : "";
@@ -127,10 +143,7 @@ public class SecretSantaBot extends TelegramLongPollingBot {
 
         switch (command) {
             case "/start":
-                sendText(chatId, "🎅 **Таємний Санта**\n\n" +
-                        "Організатор: `/claim <код>` — отримати права, `/open` — відкрити реєстрацію.\n" +
-                        "Учасники: `/join <код> <ім'я>`.\n" +
-                        "Організатор: `/list` — список, `/pair` — створити пари, `/run` — жеребкування.");
+                showStartMenu(chatId, userId, privateChat);
                 break;
 
             case "/claim":
@@ -168,7 +181,10 @@ public class SecretSantaBot extends TelegramLongPollingBot {
                 try {
                     String inviteCode = openRegistration(
                             userId, message.getFrom().getFirstName());
-                    sendText(chatId, "✅ Реєстрацію відкрито.\nЗапрошувальний код: " + inviteCode);
+                    sendText(
+                            chatId,
+                            "✅ Реєстрацію відкрито.\nЗапрошувальний код: "
+                                    + "`" + inviteCode + "`");
                 } catch (PendingDrawService.PendingDrawInProgressException exception) {
                     sendText(chatId,
                             "❌ Є незавершений розподіл. Повтори `/run`; нову реєстрацію відкрити не можна.");
@@ -310,6 +326,291 @@ public class SecretSantaBot extends TelegramLongPollingBot {
         return inviteCode;
     }
 
+    private void showStartMenu(long chatId, long userId, boolean privateChat) {
+        if (!privateChat) {
+            sendText(chatId, "Відкрий бота в особистому чаті, щоб приєднатися або створити обмін.");
+            return;
+        }
+        pendingInputs.remove(userId);
+        pendingJoins.remove(userId);
+        pendingResetTokens.remove(userId);
+        try {
+            if (organizerService.isOrganizer(userId)) {
+                sendWithKeyboard(
+                        chatId,
+                        "🎅 **Таємний Санта**\n\nОбери дію для свого обміну.",
+                        organizerMenu());
+                return;
+            }
+        } catch (IOException exception) {
+            logger.log(Level.SEVERE, "Could not read organizer state for onboarding.", exception);
+            sendText(chatId, "❌ Не вдалося завантажити меню. Спробуй пізніше.");
+            return;
+        }
+
+        sendWithKeyboard(
+                chatId,
+                "🎅 **Таємний Санта**\n\nСтвори обмін або приєднайся за запрошенням.",
+                keyboard(List.of(
+                        List.of(button("Я організатор", "onboarding:claim")),
+                        List.of(button("Приєднатися за кодом", "onboarding:join")))));
+    }
+
+    private void handlePendingInput(long userId, String firstName, String input) {
+        PendingInput pendingInput = pendingInputs.remove(userId);
+        if (pendingInput == null) {
+            return;
+        }
+        switch (pendingInput) {
+            case SETUP_CODE -> {
+                try {
+                    OrganizerService.ClaimResult result = organizerService.claim(userId, input);
+                    if (result == OrganizerService.ClaimResult.CLAIMED
+                            || (result == OrganizerService.ClaimResult.ALREADY_CLAIMED
+                                    && organizerService.isOrganizer(userId))) {
+                        sendText(userId, "✅ Права організатора підтверджено.");
+                        showStartMenu(userId, userId, true);
+                    } else {
+                        sendText(
+                                userId,
+                                "❌ Не вдалося підтвердити права організатора. Перевір код або звернись до власника.");
+                    }
+                } catch (IOException exception) {
+                    logger.log(Level.SEVERE, "Could not persist organizer claim.", exception);
+                    sendText(userId, "❌ Не вдалося зберегти права організатора. Спробуй пізніше.");
+                }
+            }
+            case INVITE_CODE -> promptJoinName(userId, firstName, input);
+            case JOIN_NAME -> {
+                PendingJoin pendingJoin = pendingJoins.get(userId);
+                if (pendingJoin == null) {
+                    sendText(userId, "Запит на приєднання застарів. Почни з `/start`.");
+                    return;
+                }
+                pendingJoins.put(userId, new PendingJoin(pendingJoin.inviteCode(), input));
+                showJoinConfirmation(userId, input);
+            }
+        }
+    }
+
+    private void promptJoinName(long userId, String firstName, String inviteCode) {
+        ExchangeService.InviteStatus status = exchangeService.inviteStatus(inviteCode);
+        if (status != ExchangeService.InviteStatus.VALID) {
+            pendingInputs.put(userId, PendingInput.INVITE_CODE);
+            sendText(
+                    userId,
+                    status == ExchangeService.InviteStatus.CLOSED
+                            ? "❌ Реєстрація закрита. Перевір код або звернись до організатора."
+                            : "❌ Код запрошення недійсний. Спробуй ще раз.");
+            return;
+        }
+        String suggestedName = firstName == null || firstName.isBlank()
+                ? "Учасник"
+                : firstName.strip();
+        pendingJoins.put(userId, new PendingJoin(inviteCode, suggestedName));
+        showJoinConfirmation(userId, suggestedName);
+    }
+
+    private void showJoinConfirmation(long userId, String name) {
+        sendWithKeyboard(
+                userId,
+                "Приєднатися до обміну як **" + escapeMarkdown(name) + "**?",
+                keyboard(List.of(
+                        List.of(button(
+                                "Підтвердити ім'я",
+                                "onboarding:join:confirm")),
+                        List.of(button("Змінити ім'я", "onboarding:join:edit")))));
+    }
+
+    private void confirmJoin(long userId, String callbackId) {
+        PendingJoin pendingJoin = pendingJoins.get(userId);
+        if (pendingJoin == null) {
+            answerCallback(callbackId, "Запит застарів. Почни з `/start`.");
+            return;
+        }
+        try {
+            ExchangeService.RegistrationResult result = exchangeService.register(
+                    userId, pendingJoin.inviteCode(), pendingJoin.suggestedName());
+            switch (result) {
+                case REGISTERED -> {
+                    pendingJoins.remove(userId);
+                    answerCallback(callbackId, "Ти приєднався до обміну.");
+                    sendText(userId, "✅ Ти приєднався до обміну.");
+                }
+                case ALREADY_REGISTERED -> {
+                    pendingJoins.remove(userId);
+                    answerCallback(callbackId, "Ти вже зареєстрований.");
+                    sendText(userId, "ℹ️ Ти вже зареєстрований у цьому обміні.");
+                }
+                case INVALID_INVITE -> {
+                    pendingJoins.remove(userId);
+                    answerCallback(callbackId, "Код запрошення недійсний.");
+                    sendText(userId, "❌ Код запрошення недійсний.");
+                }
+                case REGISTRATION_CLOSED -> {
+                    pendingJoins.remove(userId);
+                    answerCallback(callbackId, "Реєстрація закрита.");
+                    sendText(userId, "❌ Реєстрація зараз закрита.");
+                }
+                case INVALID_NAME -> {
+                    pendingInputs.put(userId, PendingInput.JOIN_NAME);
+                    answerCallback(callbackId, "Ім'я некоректне.");
+                    sendText(userId, "❌ Введи ім'я від 1 до 64 символів.");
+                }
+            }
+        } catch (IOException exception) {
+            logger.log(Level.SEVERE, "Could not persist participant registration.", exception);
+            answerCallback(callbackId, "Не вдалося зберегти реєстрацію.");
+            sendText(userId, "❌ Не вдалося зберегти реєстрацію. Спробуй пізніше.");
+        }
+    }
+
+    private void handleOnboardingCallback(CallbackQuery callback, long userId) {
+        String data = callback.getData();
+        if ("onboarding:claim".equals(data)) {
+            pendingInputs.put(userId, PendingInput.SETUP_CODE);
+            sendText(userId, "Введи код налаштування, щоб підтвердити права організатора.");
+            answerCallback(callback.getId(), "Введи код у цьому особистому чаті.");
+        } else if ("onboarding:join".equals(data)) {
+            pendingInputs.put(userId, PendingInput.INVITE_CODE);
+            pendingJoins.remove(userId);
+            sendText(userId, "Введи запрошувальний код обміну.");
+            answerCallback(callback.getId(), "Введи код у цьому особистому чаті.");
+        } else if ("onboarding:join:confirm".equals(data)) {
+            confirmJoin(userId, callback.getId());
+        } else if ("onboarding:join:edit".equals(data)) {
+            if (!pendingJoins.containsKey(userId)) {
+                answerCallback(callback.getId(), "Запит застарів. Почни з `/start`.");
+                return;
+            }
+            pendingInputs.put(userId, PendingInput.JOIN_NAME);
+            sendText(userId, "Введи ім'я, яке побачать учасники.");
+            answerCallback(callback.getId(), "Введи ім'я в чаті.");
+        } else if ("onboarding:open".equals(data)) {
+            openRegistrationFromButton(callback);
+        } else if ("onboarding:reset".equals(data)) {
+            requestResetConfirmation(userId, callback.getId());
+        } else if (data != null && data.startsWith("onboarding:reset:")) {
+            confirmReset(userId, callback.getId(), data);
+        } else {
+            answerCallback(callback.getId(), "Ця кнопка більше неактивна.");
+        }
+    }
+
+    private void openRegistrationFromButton(CallbackQuery callback) {
+        long userId = callback.getFrom().getId();
+        try {
+            String inviteCode = openRegistration(userId, callback.getFrom().getFirstName());
+            answerCallback(callback.getId(), "Реєстрацію відкрито.");
+            sendWithKeyboard(
+                    userId,
+                    "✅ Реєстрацію відкрито.\nЗапрошувальний код: "
+                            + "`" + inviteCode + "`",
+                    organizerMenu());
+        } catch (PendingDrawService.PendingDrawInProgressException exception) {
+            answerCallback(callback.getId(), "Є незавершений розподіл.");
+            sendText(userId, "❌ Є незавершений розподіл. Повтори `/run`.");
+        } catch (IllegalArgumentException exception) {
+            answerCallback(callback.getId(), "Не вдалося використати ім'я профілю.");
+            sendText(userId, "❌ Не вдалося використати ім'я з профілю Telegram.");
+        } catch (SecurityException exception) {
+            answerCallback(callback.getId(), "Дія доступна лише організатору.");
+        } catch (IOException exception) {
+            logger.log(Level.SEVERE, "Could not open registration from onboarding.", exception);
+            answerCallback(callback.getId(), "Не вдалося відкрити реєстрацію.");
+            sendText(userId, "❌ Не вдалося відкрити реєстрацію. Спробуй пізніше.");
+        }
+    }
+
+    private void requestResetConfirmation(long userId, String callbackId) {
+        if (!isOrganizerForCallback(userId, callbackId)) {
+            return;
+        }
+        if (exchangeService.state().phase() != ExchangeState.Phase.REGISTRATION_OPEN) {
+            answerCallback(callbackId, "Скидання доступне лише до початку жеребкування.");
+            sendText(userId, "❌ Скинути можна лише відкриту реєстрацію до початку жеребкування.");
+            return;
+        }
+        byte[] tokenBytes = new byte[6];
+        RANDOM.nextBytes(tokenBytes);
+        String token = TOKEN_ENCODER.encodeToString(tokenBytes);
+        pendingResetTokens.put(userId, token);
+        sendWithKeyboard(
+                userId,
+                "Скинути обмін і видалити поточний список учасників?",
+                keyboard(List.of(
+                        List.of(button("Так, скинути", "onboarding:reset:confirm:" + token)),
+                        List.of(button("Скасувати", "onboarding:reset:cancel:" + token)))));
+        answerCallback(callbackId, "Підтверди або скасуй скидання.");
+    }
+
+    private void confirmReset(long userId, String callbackId, String data) {
+        String[] parts = data.split(":", -1);
+        if (parts.length != 4
+                || !Objects.equals(pendingResetTokens.get(userId), parts[3])) {
+            answerCallback(callbackId, "Ця кнопка більше неактивна.");
+            return;
+        }
+        pendingResetTokens.remove(userId);
+        if ("cancel".equals(parts[2])) {
+            answerCallback(callbackId, "Скидання скасовано.");
+            sendText(userId, "Скидання скасовано.");
+            return;
+        }
+        if (!"confirm".equals(parts[2]) || !isOrganizerForCallback(userId, callbackId)) {
+            answerCallback(callbackId, "Дія недоступна.");
+            return;
+        }
+        try {
+            exchangeService.resetRegistration(userId, true);
+            answerCallback(callbackId, "Обмін скинуто.");
+            sendText(userId, "✅ Обмін скинуто. Ти залишаєшся організатором.");
+            showStartMenu(userId, userId, true);
+        } catch (IllegalStateException exception) {
+            answerCallback(callbackId, "Скидання недоступне після початку жеребкування.");
+            sendText(userId, "❌ Обмін уже закрито; скидання недоступне.");
+        } catch (IOException exception) {
+            logger.log(Level.SEVERE, "Could not reset registration from onboarding.", exception);
+            answerCallback(callbackId, "Не вдалося скинути обмін.");
+            sendText(userId, "❌ Не вдалося скинути обмін. Спробуй пізніше.");
+        }
+    }
+
+    private boolean isOrganizerForCallback(long userId, String callbackId) {
+        try {
+            if (organizerService.isOrganizer(userId)) {
+                return true;
+            }
+            answerCallback(callbackId, "Ця дія доступна лише організатору.");
+        } catch (IOException exception) {
+            logger.log(Level.SEVERE, "Could not read organizer state for onboarding action.", exception);
+            answerCallback(callbackId, "Не вдалося перевірити права організатора.");
+        }
+        return false;
+    }
+
+    private InlineKeyboardMarkup organizerMenu() {
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+        rows.add(List.of(button("Відкрити реєстрацію", "onboarding:open")));
+        if (exchangeService.state().phase() == ExchangeState.Phase.REGISTRATION_OPEN) {
+            rows.add(List.of(button("Скинути обмін", "onboarding:reset")));
+        }
+        return keyboard(rows);
+    }
+
+    private static InlineKeyboardButton button(String text, String callbackData) {
+        InlineKeyboardButton button = new InlineKeyboardButton();
+        button.setText(text);
+        button.setCallbackData(callbackData);
+        return button;
+    }
+
+    private static InlineKeyboardMarkup keyboard(List<List<InlineKeyboardButton>> rows) {
+        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
+        keyboard.setKeyboard(rows);
+        return keyboard;
+    }
+
     private synchronized void startPairing(long organizerId) {
         List<Participant> roster = exchangeService.participants();
         if (roster.size() < 2) {
@@ -340,6 +641,11 @@ public class SecretSantaBot extends TelegramLongPollingBot {
         long userId = callback.getFrom().getId();
         if (!Objects.equals(callback.getMessage().getChatId(), userId)) {
             answerCallback(callback.getId(), "Використовуй кнопки лише в особистому чаті.");
+            return;
+        }
+        if (callback.getData() != null
+                && callback.getData().startsWith("onboarding:")) {
+            handleOnboardingCallback(callback, userId);
             return;
         }
         try {

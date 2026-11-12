@@ -80,25 +80,27 @@ draw begins.
 
 ## Task 9: Adding private button-driven onboarding
 
+**Status:** Complete.
+
 **Description:** Replace routine command-based onboarding with private prompts
 and buttons for organizer claim/open, participant invite entry, and name
 confirmation/editing. Keep text input only for codes and edited names.
 
 **Acceptance criteria:**
-- [ ] `/start` presents a private button-oriented flow; organizer claim and
+- [x] `/start` presents a private button-oriented flow; organizer claim and
   exchange opening are available only in the organizer's private chat.
-- [ ] Organizer is included automatically; invite code is sent only to them.
-- [ ] Organizer can request and confirm a pre-draw reset; reset is rejected
+- [x] Organizer is included automatically; invite code is sent only to them.
+- [x] Organizer can request and confirm a pre-draw reset; reset is rejected
   after assignment starts.
-- [ ] A participant can enter the valid invite, confirm/edit their Telegram first
+- [x] A participant can enter the valid invite, confirm/edit their Telegram first
   name, and join once; registration closes at draw start.
-- [ ] Unauthorized, group-chat, invalid, duplicate, or closed-registration
+- [x] Unauthorized, group-chat, invalid, duplicate, or closed-registration
   interactions are rejected without changing exchange state.
 
 **Verification:**
-- [ ] Bot tests exercise callback and text flows with fake Telegram users and
+- [x] Bot tests exercise callback and text flows with fake Telegram users and
   assert private delivery and organizer authorization.
-- [ ] `mvn test` passes.
+- [x] The complete Maven test suite and Java 27 Docker build pass.
 
 **Dependencies:** Task 8
 
@@ -109,9 +111,9 @@ confirmation/editing. Keep text input only for codes and edited names.
 **Estimated scope:** Medium
 
 ## Checkpoint: After Tasks 7-9
-- [ ] Encrypted state survives restart, and organizer/participant onboarding
+- [x] Encrypted state survives restart, and organizer/participant onboarding
   works end-to-end with a fake messenger.
-- [ ] Pre-draw reset is confirmed and cannot clear an in-progress draw.
+- [x] Pre-draw reset is confirmed and cannot clear an in-progress draw.
 - [ ] Human reviews the durable onboarding slice before pairing work.
 
 ## Task 10: Implementing mutual participant pair consent

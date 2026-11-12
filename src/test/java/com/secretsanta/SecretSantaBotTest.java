@@ -35,6 +35,269 @@ class SecretSantaBotTest {
     }
 
     @Test
+    void startShowsPrivateOnboardingButtonsInsteadOfCommandInstructions() {
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(createService(), messenger);
+
+        bot.onUpdateReceived(update(123L, 123L, "private", "/start"));
+
+        InlineKeyboardMarkup keyboard = messenger.sentMessages.getLast().keyboard();
+        assertTrue(keyboard != null);
+        assertTrue(keyboard.getKeyboard().stream()
+                .flatMap(List::stream)
+                .anyMatch(button -> button.getCallbackData().equals("onboarding:claim")));
+        assertTrue(keyboard.getKeyboard().stream()
+                .flatMap(List::stream)
+                .anyMatch(button -> button.getCallbackData().equals("onboarding:join")));
+        assertFalse(messenger.sentMessages.getLast().text().contains("/claim <код>"));
+    }
+
+    @Test
+    void startInGroupDoesNotOfferOnboardingButtons() {
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(createService(), messenger);
+
+        bot.onUpdateReceived(update(-900L, 123L, "group", "/start"));
+
+        assertTrue(messenger.sentMessages.getLast().keyboard() == null);
+        assertTrue(messenger.sentMessages.getLast().text().contains("особистому чаті"));
+    }
+
+    @Test
+    void organizerCanClaimAndOpenRegistrationUsingButtons() throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+
+        bot.onUpdateReceived(update(100L, 100L, "private", "/start"));
+        bot.onUpdateReceived(callbackUpdate(
+                "onboarding:claim", 100L, 100L, "claim", "Organizer"));
+        bot.onUpdateReceived(update(100L, 100L, "private", "setup-code"));
+        assertTrue(organizerService.isOrganizer(100L));
+
+        String openCallback = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Відкрити реєстрацію");
+        bot.onUpdateReceived(callbackUpdate(openCallback, 100L, 100L, "open", "Organizer"));
+
+        assertTrue(messenger.sentMessages.getLast().text().contains("Запрошувальний код:"));
+        assertEquals(100L, messenger.sentMessages.getLast().chatId());
+    }
+
+    @Test
+    void incorrectSetupCodeDoesNotClaimOrganizerThroughButtonFlow() throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+
+        bot.onUpdateReceived(update(100L, 100L, "private", "/start"));
+        bot.onUpdateReceived(callbackUpdate(
+                "onboarding:claim", 100L, 100L, "claim", "Organizer"));
+        bot.onUpdateReceived(update(100L, 100L, "private", "wrong-code"));
+
+        assertFalse(organizerService.isOrganizer(100L));
+        assertTrue(messenger.sentMessages.getLast().text().contains("Не вдалося підтвердити"));
+        assertFalse(messenger.sentMessages.getLast().text().contains("wrong-code"));
+    }
+
+    @Test
+    void correctSetupCodeCannotClaimOrganizerAfterAnotherUserHasClaimed() throws Exception {
+        OrganizerService organizerService = createService();
+        organizerService.claim(100L, "setup-code");
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+
+        bot.onUpdateReceived(update(201L, 201L, "private", "/start"));
+        bot.onUpdateReceived(callbackUpdate(
+                "onboarding:claim", 201L, 201L, "claim", "Guest"));
+        bot.onUpdateReceived(update(201L, 201L, "private", "setup-code"));
+
+        assertTrue(organizerService.isOrganizer(100L));
+        assertFalse(organizerService.isOrganizer(201L));
+        assertFalse(messenger.sentMessages.getLast().text().contains("підтверджено"));
+    }
+
+    @Test
+    void participantJoinsWithConfirmedTelegramNameUsingButtons() throws Exception {
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(createService(), messenger);
+        String inviteCode = openRegistrationWithButtons(bot, messenger);
+
+        bot.onUpdateReceived(update(201L, 201L, "private", "/start"));
+        bot.onUpdateReceived(callbackUpdate(
+                "onboarding:join", 201L, 201L, "join", "Alex"));
+        bot.onUpdateReceived(update(201L, 201L, "private", inviteCode, "Alex"));
+        String confirmCallback = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Підтвердити ім'я");
+        bot.onUpdateReceived(callbackUpdate(confirmCallback, 201L, 201L, "confirm", "Alex"));
+
+        ExchangeState exchangeState =
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow();
+        assertTrue(exchangeState.participants().stream()
+                .anyMatch(participant -> participant.userId() == 201L
+                        && participant.name().equals("Alex")));
+        assertTrue(messenger.sentMessages.getLast().text().contains("приєднався"));
+    }
+
+    @Test
+    void participantCanEditSuggestedNameBeforeJoining() throws Exception {
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(createService(), messenger);
+        String inviteCode = openRegistrationWithButtons(bot, messenger);
+
+        bot.onUpdateReceived(update(201L, 201L, "private", "/start"));
+        bot.onUpdateReceived(callbackUpdate(
+                "onboarding:join", 201L, 201L, "join", "Alex"));
+        bot.onUpdateReceived(update(201L, 201L, "private", inviteCode, "Alex"));
+        bot.onUpdateReceived(callbackUpdate(
+                "onboarding:join:edit", 201L, 201L, "edit", "Alex"));
+        bot.onUpdateReceived(update(201L, 201L, "private", "Alex Example", "Alex"));
+        bot.onUpdateReceived(callbackUpdate(
+                "onboarding:join:confirm", 201L, 201L, "confirm", "Alex"));
+
+        ExchangeState exchangeState =
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow();
+        assertTrue(exchangeState.participants().stream()
+                .anyMatch(participant -> participant.userId() == 201L
+                        && participant.name().equals("Alex Example")));
+    }
+
+    @Test
+    void participantCannotJoinTwiceOrReplaceTheirConfirmedName() throws Exception {
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(createService(), messenger);
+        String inviteCode = openRegistrationWithButtons(bot, messenger);
+
+        bot.onUpdateReceived(update(201L, 201L, "private", "/start"));
+        bot.onUpdateReceived(callbackUpdate(
+                "onboarding:join", 201L, 201L, "join-1", "Alex"));
+        bot.onUpdateReceived(update(201L, 201L, "private", inviteCode, "Alex"));
+        bot.onUpdateReceived(callbackUpdate(
+                "onboarding:join:confirm", 201L, 201L, "confirm-1", "Alex"));
+
+        bot.onUpdateReceived(update(201L, 201L, "private", "/start"));
+        bot.onUpdateReceived(callbackUpdate(
+                "onboarding:join", 201L, 201L, "join-2", "Different"));
+        bot.onUpdateReceived(update(201L, 201L, "private", inviteCode, "Different"));
+        bot.onUpdateReceived(callbackUpdate(
+                "onboarding:join:confirm", 201L, 201L, "confirm-2", "Different"));
+
+        ExchangeState exchangeState =
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow();
+        assertEquals(
+                "Alex",
+                exchangeState.participants().stream()
+                        .filter(participant -> participant.userId() == 201L)
+                        .findFirst()
+                        .orElseThrow()
+                        .name());
+        assertTrue(messenger.sentMessages.getLast().text().contains("вже зареєстрований"));
+    }
+
+    @Test
+    void invalidInviteDoesNotRegisterAndPromptsForAnotherCode() throws Exception {
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(createService(), messenger);
+
+        bot.onUpdateReceived(update(201L, 201L, "private", "/start"));
+        bot.onUpdateReceived(callbackUpdate(
+                "onboarding:join", 201L, 201L, "join", "Alex"));
+        bot.onUpdateReceived(update(201L, 201L, "private", "invalid-code"));
+
+        assertTrue(messenger.sentMessages.getLast().text().contains("закрита"));
+        assertTrue(messenger.sentMessages.getLast().keyboard() == null);
+        assertTrue(new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().isEmpty());
+    }
+
+    @Test
+    void staleJoinConfirmationCannotRegisterAfterTheDrawStarts() throws Exception {
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(createService(), messenger);
+        String inviteCode = openRegistrationWithButtons(bot, messenger);
+
+        bot.onUpdateReceived(update(201L, 201L, "private", "/start"));
+        bot.onUpdateReceived(callbackUpdate(
+                "onboarding:join", 201L, 201L, "join", "Alex"));
+        bot.onUpdateReceived(update(201L, 201L, "private", inviteCode, "Alex"));
+        String staleConfirmation = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Підтвердити ім'я");
+        bot.onUpdateReceived(update(
+                202L, 202L, "private", "/join " + inviteCode + " Sam"));
+
+        bot.onUpdateReceived(update(100L, 100L, "private", "/run"));
+        bot.onUpdateReceived(callbackUpdate(
+                staleConfirmation, 201L, 201L, "stale-confirm", "Alex"));
+
+        ExchangeState exchangeState =
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow();
+        assertTrue(exchangeState.participants().stream()
+                .noneMatch(participant -> participant.userId() == 201L));
+        assertTrue(messenger.sentMessages.getLast().text().contains("закрита"));
+    }
+
+    @Test
+    void organizerCanResetOnlyAfterExplicitConfirmation() throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+        openRegistrationWithButtons(bot, messenger);
+
+        bot.onUpdateReceived(callbackUpdate(
+                "onboarding:reset", 100L, 100L, "reset", "Organizer"));
+        assertEquals(
+                ExchangeState.Phase.REGISTRATION_OPEN,
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY)
+                        .load()
+                        .orElseThrow()
+                        .phase());
+        String confirmCallback = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Так, скинути");
+        bot.onUpdateReceived(callbackUpdate(
+                confirmCallback, 100L, 100L, "confirm-reset", "Organizer"));
+
+        assertEquals(
+                ExchangeState.Phase.EMPTY,
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY)
+                        .load()
+                        .orElseThrow()
+                        .phase());
+        assertTrue(organizerService.isOrganizer(100L));
+        assertTrue(messenger.sentMessages.getLast().keyboard() != null);
+    }
+
+    @Test
+    void nonOrganizerCannotResetUsingForgedButtonCallback() throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+        openRegistrationWithButtons(bot, messenger);
+
+        bot.onUpdateReceived(callbackUpdate(
+                "onboarding:reset", 201L, 201L, "forged-reset", "Guest"));
+
+        assertEquals(
+                ExchangeState.Phase.REGISTRATION_OPEN,
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY)
+                        .load()
+                        .orElseThrow()
+                        .phase());
+        assertTrue(messenger.callbackAnswers.getLast().text().contains("лише організатору"));
+    }
+
+    @Test
+    void nonOrganizerCannotOpenRegistrationUsingForgedButtonCallback() throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+
+        bot.onUpdateReceived(callbackUpdate(
+                "onboarding:open", 201L, 201L, "forged-open", "Guest"));
+
+        assertFalse(organizerService.isOrganizer(201L));
+        assertTrue(new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().isEmpty());
+        assertTrue(messenger.callbackAnswers.getLast().text().contains("лише організатору"));
+    }
+
+    @Test
     void rejectsSetupCodeClaimsFromGroupChats() throws Exception {
         OrganizerService organizerService = createService();
         List<SentMessage> sentMessages = new ArrayList<>();
@@ -84,7 +347,7 @@ class SecretSantaBotTest {
         assertTrue(organizerService.isRegistrationOpen());
         assertEquals(123L, inviteMessage.chatId());
         assertTrue(inviteMessage.text().matches(
-                "(?s).*Запрошувальний код: [A-Za-z0-9_-]{32}.*"));
+                "(?s).*Запрошувальний код: `[A-Za-z0-9_-]{32}`.*"));
         bot.onUpdateReceived(update(123L, 123L, "private", "/list"));
         assertTrue(sentMessages.getLast().text().contains("User 123"));
     }
@@ -345,9 +608,23 @@ class SecretSantaBotTest {
         return inviteCode(messenger.sentMessages.getLast().text());
     }
 
+    private static String openRegistrationWithButtons(
+            SecretSantaBot bot, TestTelegramMessenger messenger) {
+        bot.onUpdateReceived(update(100L, 100L, "private", "/start"));
+        bot.onUpdateReceived(callbackUpdate(
+                "onboarding:claim", 100L, 100L, "claim", "Organizer"));
+        bot.onUpdateReceived(update(100L, 100L, "private", "setup-code"));
+        String openCallback = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Відкрити реєстрацію");
+        bot.onUpdateReceived(callbackUpdate(
+                openCallback, 100L, 100L, "open", "Organizer"));
+        return inviteCode(messenger.sentMessages.getLast().text());
+    }
+
     private static String inviteCode(String message) {
         return message.substring(message.lastIndexOf("Запрошувальний код: ")
-                + "Запрошувальний код: ".length());
+                        + "Запрошувальний код: ".length())
+                .replace("`", "");
     }
 
     private static void pairParticipants(
@@ -376,8 +653,14 @@ class SecretSantaBotTest {
 
     private static Update callbackUpdate(
             String callbackData, long userId, long chatId, String callbackId) {
+        return callbackUpdate(callbackData, userId, chatId, callbackId, "User " + userId);
+    }
+
+    private static Update callbackUpdate(
+            String callbackData, long userId, long chatId, String callbackId, String firstName) {
         User user = new User();
         user.setId(userId);
+        user.setFirstName(firstName);
 
         Chat chat = new Chat();
         chat.setId(chatId);
@@ -398,9 +681,14 @@ class SecretSantaBotTest {
     }
 
     private static Update update(long chatId, long userId, String chatType, String text) {
+        return update(chatId, userId, chatType, text, "User " + userId);
+    }
+
+    private static Update update(
+            long chatId, long userId, String chatType, String text, String firstName) {
         User user = new User();
         user.setId(userId);
-        user.setFirstName("User " + userId);
+        user.setFirstName(firstName);
 
         Chat chat = new Chat();
         chat.setId(chatId);

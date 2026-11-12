@@ -18,13 +18,14 @@ Provide these values through the process environment or a trusted secret manager
 - `TELEGRAM_BOT_USERNAME` — bot username
 - `SECRET_SANTA_SETUP_CODE` — one-time organizer claim code, at least 32
   characters and randomly generated
-- `SECRET_SANTA_DATA_KEY` — stable Base64-encoded 256-bit key for pending draws
+- `SECRET_SANTA_DATA_KEY` — stable Base64-encoded 256-bit key for exchange state
+  and pending draws
 
-The data key must remain the same while a draw is pending. Store it securely
-outside the repository and keep a backup; losing it makes an undelivered draw
-unrecoverable. The bot stores pending assignments and delivery progress encrypted
-with AES-256-GCM in `<user.home>/.secretsanta-telegram-bot/pending-draw.enc`.
-Do not commit credentials, keys, or environment files.
+The data key must remain the same while an exchange or draw is active. Store it
+securely outside the repository and keep a backup; losing it makes persisted
+exchange data unrecoverable. The bot encrypts exchange state and pending draws
+with AES-256-GCM under `<user.home>/.secretsanta-telegram-bot/`. Do not commit
+credentials, keys, or environment files.
 
 Telegram bot chats are not end-to-end encrypted between participants and the bot.
 Telegram and the machine or service running the bot can access messages processed
@@ -100,12 +101,15 @@ docker compose up --build -d
 docker compose logs -f bot
 ```
 
-In a private chat, exercise `/claim`, `/open`, participant `/join`, organizer
-`/pair`, and `/run` using test accounts before any real exchange. The bot stores
-the organizer ID and encrypted pending draw in the persistent `bot-data`
-volume. Back up that volume and the matching `SECRET_SANTA_DATA_KEY` separately;
-the key must remain stable while a draw is pending. Registration and the roster
-are in memory, so a restart during registration requires opening a new exchange.
+In a private chat, send `/start` and use the buttons to claim organizer access
+or join an exchange. The organizer enters the setup code, opens registration,
+and shares the invite code; participants enter it and confirm or edit their
+Telegram first name. Use test accounts to verify the flow before any real
+exchange. The bot stores the organizer ID and encrypted exchange state in the
+persistent `bot-data` volume. Back up that volume and the matching
+`SECRET_SANTA_DATA_KEY` separately; the key must remain stable while an exchange
+or draw is active. The organizer can reset registration only after confirming
+and before starting a draw.
 
 Stop or remove the container without deleting persisted state:
 
@@ -121,22 +125,27 @@ and configure platform-specific monitoring before relying on a hosted instance.
 
 ## Organizer setup
 
-In a private chat with the bot, the organizer sends `/claim <setup code>` once.
-The bot stores only the organizer's Telegram user ID in
+In a private chat with the bot, the organizer sends `/start`, selects **Я
+організатор**, and enters the one-time setup code. The bot stores only the
+organizer's Telegram user ID in
 `<user.home>/.secretsanta-telegram-bot/organizer-id`; later claims are rejected.
-The organizer then sends `/open` and receives a new invite code privately. Only
-the organizer can use `/list` or `/run`, and those commands must also be sent
-in a private chat.
+The organizer then selects **Відкрити реєстрацію** and receives the invite code
+privately. The organizer is automatically included in the participant list.
+Participants select **Приєднатися за кодом**, enter the invite code, and confirm
+or edit their Telegram first name before joining.
 
-The participant roster and active invite code are held in memory. If the bot
-restarts before the draw, registration is closed and the old invite code is
-discarded; the organizer must send `/open` again and share the new code.
+The encrypted exchange snapshot in
+`<user.home>/.secretsanta-telegram-bot/exchange-state.enc` preserves an open
+registration and roster across restarts. The organizer can select **Скинути
+обмін** and must confirm; this option is unavailable after registration closes
+for a draw. Organizer commands such as `/list`, `/pair`, and `/run` remain
+available in private chat while their button-based flows are added.
 
-Participants join privately with `/join <invite code> <display name>`. The
-organizer sends `/pair`, selects one participant, then selects their partner
-using the inline buttons. Re-pairing either person removes their previous pair;
-any former partners are left unpaired and the organizer is told which pairs
-changed.
+The legacy `/join <invite code> <display name>` command remains available.
+Pairing and drawing are still organizer commands: `/pair` selects one
+participant and then their partner using inline buttons. Re-pairing either
+person removes their previous pair; any former partners are left unpaired and
+the organizer is told which pairs changed.
 
 The organizer starts the draw with `/run`. The bot saves the complete encrypted
 draw before sending any assignments. If any private delivery fails, the
