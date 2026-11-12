@@ -42,6 +42,31 @@ mvn exec:java
 Set `JAVA_HOME` to a JDK 27 installation and ensure its `bin` directory is on
 `PATH` before running Maven.
 
+## Manual offline simulator
+
+To try the real bot command and pairing logic without Telegram or credentials,
+build the test image from the directory containing `Dockerfile`:
+
+```powershell
+docker build --target build --tag secret-santa-bot:offline-tests .
+docker run --rm -it --entrypoint java secret-santa-bot:offline-tests -cp "/workspace/target/classes:/workspace/target/dependency/*" com.secretsanta.OfflineBotSimulator
+```
+
+In the simulator, each positive user ID represents a separate private chat.
+Type `help` for examples. A basic exchange is:
+
+1. As user `100`, send `/claim demo-setup`, then `/open`.
+2. Copy the invite code printed in the local console.
+3. Use different IDs with `/join <invite-code> <name>` for each participant.
+4. As user `100`, send `/pair`; use `click <number>` to choose each pair.
+5. Send `/run` and inspect the simulated private assignment messages printed
+   locally.
+
+The simulator uses a fake message sender, creates a fresh encryption key and
+temporary data directory for each run, and removes that directory on exit. It
+does not call Telegram or use `TELEGRAM_BOT_TOKEN`. This is a local behavior
+test, not a check of Telegram delivery or connectivity.
+
 ## Container pilot with a test bot
 
 The Docker image builds and tests the application with Java 27, then runs it as
