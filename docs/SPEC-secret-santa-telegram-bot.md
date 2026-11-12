@@ -1,197 +1,280 @@
-# Spec: Secret Santa Telegram Bot
+# Spec: Private Secret Santa Exchange
 
 ## Status
-Approved requirements; core implementation is complete, with live Telegram
-verification still pending.
+Proposed revision; awaiting human approval. This replaces the earlier
+command-driven organizer-pairing flow. The current implementation does not yet
+meet this specification.
 
 ## Objective
-Build a simple Telegram bot for one friend group's Christmas gift exchange. Friends
-start a private conversation with the bot and register themselves. The organizer
-starts one draw after registration is complete. Each participant privately receives
-one recipient.
+Build a button-driven Telegram bot for one friend group's Secret Santa exchange.
+The organizer and participants use private chats with the bot. Friends enter an
+exchange invitation code, register using their Telegram first name (with an
+option to edit it), and can propose partner pairs that require mutual acceptance.
+The organizer can review and override pairings, start or rerun a complete draw,
+and eventually delete the exchange after all participants confirm.
 
-The draw must assign every participant exactly once, never assign someone to
-themselves, and never assign either partner to the other. The goal is to avoid
-sharing participant details with a separate Secret Santa website while making a
-useful project the group can change later.
+The organizer is also a participant. The bot sends each participant only their
+own assignment. It must not display or log the full giver-to-recipient mapping
+to the organizer. This is an application-interface and logging guarantee, not a
+cryptographic guarantee against someone who can inspect the running process or
+its secrets. The organizer may also infer information from the participant
+roster, pair exclusions, and their own assignment, especially in a small group.
 
 ## Scope and user stories
-- As a participant, I can start the bot, join with the current event invite code,
-  and register my name.
-- As a participant, I receive my recipient privately after the organizer starts the
-  draw.
-- As the organizer, I can open registration, inspect the roster, pair participants,
-  and start the draw when the group is ready.
-- As the organizer, I get a clear error if there is no valid assignment, and no
-  participant is sent a partial or invalid result.
+- As the organizer, I can open one exchange, join it automatically as a
+  participant, and privately share its invitation code.
+- As a friend, I can start the bot, enter the invite code, confirm or edit the
+  Telegram first name used for the exchange, and join the active roster.
+- As a participant, I can propose a partner and accept or decline a proposal
+  addressed to me.
+- As the organizer, I can inspect roster and pair/request status and directly
+  create or replace a pair.
+- As the organizer, I can start an assignment from a button. Every participant,
+  including me, receives only their own assignment in the same private chat.
+- As a participant, I can confirm receipt of the current assignment.
+- As the organizer, I can request a complete replacement draw before cleanup,
+  or delete the exchange after all participants confirm.
+- An open exchange and its delivery state survive process restarts.
 
-Email delivery, a public multi-group service, and arbitrary non-partner exclusions
-are out of scope for the first version.
+Email delivery, group-chat workflows, multiple concurrent exchanges, and
+arbitrary non-partner exclusions are out of scope.
 
-## Assumptions
-- Extend the existing Maven Telegram bot project and its Telegram Bots
-  library rather than selecting a new stack.
-- Target the latest generally available Java release, Java 27, as of November 10,
-  2026. Java 27 is a non-LTS release.
-- Use Telegram private chats for registration and delivery. A participant must
-  start the bot before it can message them.
-- This is a single-group bot. Telegram is not end-to-end encrypted between a
-  participant and a bot; Telegram and the machine/service hosting the bot can
-  access messages the bot processes.
+## Assumptions and decisions
+- "Room" means one shared exchange roster, presented through separate private
+  chats. The bot cannot identify a Telegram user who only opens its profile;
+  Telegram identity becomes available after the user presses Start or sends a
+  message.
+- A participant may have at most one accepted partner and at most one open
+  partner request, sent or received, at a time. Only unpaired participants
+  without another open request can create or accept a request.
+- The requester can cancel a pending request; its recipient can accept or
+  decline it. An accepted participant-created pair cannot be changed by either
+  participant; the organizer can change it directly.
+- Assignment cannot start while any participant pair request is unresolved.
+  Requests must first be accepted, declined, or canceled by the requester.
+- The invitation remains valid until assignment starts. Starting assignment
+  closes registration.
+- The organizer can reset an exchange before assignment only, and must confirm
+  the reset. Reset is unavailable while delivery is pending.
+- A new full draw is permitted only after the previous draw was fully delivered
+  and before exchange cleanup. It replaces the prior assignments for everyone;
+  each recipient must be told that the new result supersedes their previous one.
+- Confirmation applies only to the current draw. A replacement draw clears all
+  prior confirmations. Stale buttons from an older draw cannot confirm the new
+  one.
+- Assignment data is persisted encrypted with AES-256-GCM using the stable
+  `SECRET_SANTA_DATA_KEY`. The running application must decrypt it to deliver
+  messages. The organizer trusts the application and its host.
+- After cleanup, participant and assignment data for the exchange is deleted;
+  the persistent organizer identity remains.
 
 ## Tech Stack
-- Java 27 (latest generally available release as of November 10, 2026; non-LTS)
+- Java 27 (non-LTS)
 - Maven
 - Existing Telegram Bots Java library, version 6.9.7.1
 - Existing SLF4J Simple logger, version 2.0.9
-- JUnit Jupiter for automated tests
+- JUnit Jupiter, version 6.1.3
 - Standard Maven source layout: `src/main/java` and `src/test/java`
-- Maven Exec Plugin for local execution
-- Java Cryptography Architecture (AES-256-GCM) for encrypting pending assignments;
-  no additional cryptography library is required
-
-The project currently has a root-level `SecretSantaBot.java` and no configured
-test framework or persistent store. Its Maven compiler is currently configured
-for Java 17; implementation must update the compiler configuration and verify
-dependency compatibility with Java 27. Implementation will move the bot into the
-standard Maven source layout.
-
-Java release reference: [Oracle Java SE Support Roadmap](https://www.oracle.com/java/technologies/java-se-support-roadmap.html)
+- Java Cryptography Architecture (AES-256-GCM); no additional cryptography
+  dependency is required
+- Existing Docker multi-stage build and Docker Compose pilot configuration
 
 ## Commands
-- Test: `mvn test`
-- Build: `mvn clean package`
-- Run: `mvn exec:java`
-- Configure `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`,
-  `SECRET_SANTA_SETUP_CODE`, and `SECRET_SANTA_DATA_KEY` in the process
-  environment before running. Generate the setup code randomly and use at least
-  32 characters. The data key is a stable Base64-encoded 256-bit key. Never
-  place real values in source control.
+Run Maven commands from the directory containing `pom.xml`. The Maven commands
+require JDK 27.
 
-## Project Structure
-- `src/main/java/` — bot entry point, Telegram update handling, assignment logic,
-  and state handling
-- `src/test/java/` — JUnit Jupiter unit and integration tests
-- `pom.xml` — Maven project and dependencies
-- `docs/intent/secret-santa-telegram-bot.md` — confirmed project intent
-- `docs/SPEC-secret-santa-telegram-bot.md` — this specification
-- `.secretsanta-telegram-bot/` under the user's home directory — local organizer
-  identity and encrypted pending-draw data; never part of the repository
-
-## Code Style
-Follow Java conventions supported by Java 27 and the existing project style: descriptive
-PascalCase type names, camelCase methods and fields, immutable records for simple
-data values where appropriate, and explicit handling of Telegram API errors.
-
-```java
-public record Participant(long chatId, String name) {}
-
-private void registerParticipant(Participant participant) {
-    participants.put(participant.chatId(), participant);
-}
+```powershell
+mvn clean test
+mvn clean package
 ```
 
-Do not place bot tokens or other credentials in source files or documentation.
+The container build uses Java 27 and runs the test suite:
+
+```powershell
+docker build --target build --tag secret-santa-bot:offline-tests .
+docker run --rm -it --entrypoint java secret-santa-bot:offline-tests -cp "/workspace/target/classes:/workspace/target/dependency/*" com.secretsanta.OfflineBotSimulator
+```
+
+The manual simulator uses fake messages and temporary data; it does not connect
+to Telegram. A live test-bot pilot uses local `.env` configuration and Docker
+Compose:
+
+```powershell
+docker compose config --quiet
+docker compose up --build -d
+docker compose logs -f bot
+docker compose stop
+```
+
+The live bot requires `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`,
+`SECRET_SANTA_SETUP_CODE` (random, at least 32 characters), and
+`SECRET_SANTA_DATA_KEY` (stable Base64 for exactly 32 bytes). Do not put real
+values in source control or chat. Do not remove the Compose data volume during
+normal shutdown.
+
+## Project Structure
+- `src/main/java/com/secretsanta/` — Telegram bot, exchange and pairing
+  services, assignment generation/delivery, and persistence
+- `src/test/java/com/secretsanta/` — JUnit Jupiter unit and integration tests
+- `docs/intent/secret-santa-telegram-bot.md` — confirmed product intent
+- `docs/SPEC-secret-santa-telegram-bot.md` — this specification
+- `tasks/` — implementation plan and acceptance checklist
+- Docker data volume mounted at
+  `/home/bot/.secretsanta-telegram-bot` — organizer identity and durable
+  exchange state
+
+## Code Style
+Follow existing Java conventions: descriptive PascalCase type names,
+camelCase methods and fields, immutable records for simple values, and explicit
+handling of Telegram and storage errors. Validate messages and callback data at
+the update boundary; authorize every organizer action, including callbacks.
+
+```java
+record PairRequest(
+        long requesterId,
+        long requestedPartnerId,
+        PairRequestStatus status) {}
+```
+
+Never log Telegram update bodies, participant assignments, or assignment
+delivery payloads. Do not place credentials or keys in source files or docs.
 
 ## Functional Requirements
-1. The first user who claims organizer control using the randomly generated,
-   at-least-32-character setup code configured in `SECRET_SANTA_SETUP_CODE`
-   becomes the sole organizer. The bot persists only that organizer's Telegram
-   user ID locally so the code cannot be reused after restart.
-2. The organizer opens registration. The bot generates an event invite code and
-   sends it privately to the organizer. Participants join through a private chat
-   using that code and register a display name. The code is valid only for the
-   currently open exchange.
-3. The organizer can inspect the roster and pair two registered participants by
-   selecting them from the roster. A participant can have at most one partner. If
-   the organizer pairs someone who already has a partner, the old pair is removed,
-   the new pair is set, and the organizer is told which pairing changed.
-4. The roster and open-registration state are held in memory. A restart before a
-   draw loses that roster; the organizer must open a new registration and share a
-   newly generated invite code.
-5. The organizer starts the draw after registration. Registration closes only
-   after a valid full assignment has been generated. If no valid assignment is
-   possible, the bot reports an actionable error, sends no assignments, and
-   leaves the roster available for correction.
-6. The draw produces a one-to-one assignment: every registered participant gives
-   to exactly one participant and receives from exactly one participant.
-7. No participant is assigned to themselves or their partner.
-8. Before delivery begins, the bot persists the pending assignment locally in
-   encrypted form using AES-256-GCM and `SECRET_SANTA_DATA_KEY`, with a fresh
-   random nonce for each encryption. It records delivery progress and retries
-   failed deliveries with the same assignment; it never generates a replacement
-   draw after any assignment may have been sent. If the encrypted pending draw
-   cannot be saved, no assignment is sent and the organizer is notified.
-9. A pending draw remains stored until every participant's assignment is
-   successfully delivered. If a recipient remains unreachable, the draw stays
-   pending indefinitely for organizer retry; the organizer cannot cancel it and
-   start a different draw through the bot.
-10. If the process restarts during delivery, the bot reloads the pending draw and
-    allows the organizer to retry. A crash between Telegram accepting a message
-    and recording its delivery may cause that same assignment to be sent again;
-    it must never change the recipient.
-11. Assignment messages are sent only in private chats. The bot does not reveal
-   recipient assignments in group messages or logs.
-12. The bot reports Telegram delivery failures explicitly; a failed delivery must
-   not be reported as a successful complete draw.
-13. After all messages are delivered, the bot deletes the pending draw, clears the
-    roster, and becomes ready for a new exchange. The locally persisted organizer
-    ID remains.
+1. The first user who claims organizer access with the randomly generated,
+   at-least-32-character `SECRET_SANTA_SETUP_CODE` becomes the sole organizer.
+   Persist only the organizer's Telegram user ID for this claim; do not log the
+   provided code.
+2. The bot offers a button-driven private-chat flow. `/start` is the entry point
+   and may provide navigation buttons. Text entry is limited to values that
+   cannot be selected with a button, such as an invite code or edited display
+   name.
+3. The organizer can open one exchange. Opening automatically adds the
+   organizer to its roster using the organizer's Telegram first name, which the
+   organizer can confirm or edit. The bot sends the invite code only to the
+   organizer's private chat.
+4. A friend can enter the current invite code in a private chat, confirm or edit
+   their Telegram first name, and join once. The bot uses Telegram's sender ID
+   as the participant identity. It does not collect usernames, phone numbers, or
+   other profile fields unless separately approved.
+5. The invitation is reusable for the active exchange until assignment starts.
+   Registration is then closed. A restart does not invalidate the invitation or
+   discard the roster.
+6. Persist the active exchange across restarts, including participant IDs and
+   display names, invite/registration state, accepted pairs, pending pair
+   requests, current assignment generation, delivery progress, and current-draw
+   confirmations. Persist updates atomically. Do not start a second active
+   exchange.
+7. Participant pairing is private and consent-based. Only unpaired participants
+   with no pending request can send a request. The recipient can accept or
+   decline; the requester can cancel. Acceptance creates a reciprocal
+   exclusion. Participants cannot change an accepted pair themselves.
+8. The organizer can privately review the roster, pair status, and pending
+   requests, and can directly pair or replace pairs. Organizer changes must
+   preserve the one-partner-per-participant constraint and notify affected
+   participants privately. Pairing controls never expose assignment recipients.
+9. The organizer can reset the exchange before assignment. The bot must show a
+   clear confirmation step. Confirming deletes the current invite, participants,
+   pairs, and pending pairing requests, then allows a fresh exchange. Reset is
+   rejected after assignment begins.
+10. The organizer starts assignment through a button. The bot closes
+    registration and generates a complete one-to-one draw in which nobody is
+    assigned to themselves or their accepted partner. Assignment is blocked
+    until all open pair requests are accepted, declined, or canceled. If no
+    valid draw exists, no assignment is sent, and the exchange remains available
+    for correction.
+11. Before any assignment message is sent, persist the complete current draw
+    encrypted with AES-256-GCM and a fresh random nonce. Persist per-recipient
+    delivery progress. If persistence fails, send no assignments.
+12. Send each participant, including the organizer, only their own recipient in
+    their private chat. The organizer's UI and application logs must never show
+    or contain the complete giver-to-recipient mapping. Organizer status may
+    show delivery/confirmation counts and participant confirmation state, but
+    not assignment recipients. The organizer receives only their own assignment.
+13. A failed or interrupted delivery remains pending. Retry the same assignment
+    rather than drawing a replacement. A crash after Telegram accepts a message
+    but before delivery progress is persisted may cause that same assignment to
+    be sent again. The organizer can see failures without seeing the mapping.
+14. After the current draw is fully delivered, the organizer may trigger a
+    complete replacement draw before cleanup. Require an explicit confirmation
+    that prior assignments will be superseded. Generate and persist the full new
+    draw before sending; notify every participant privately that the new result
+    replaces the old one and deliver their new individual assignment. If any
+    delivery fails, retry that same replacement draw. Never mix assignment
+    generations in the current exchange state.
+15. Each assignment message includes a private Received/OK button. Record
+    confirmation against the current draw generation. Ignore stale confirmation
+    callbacks from prior assignments. The organizer can see who has confirmed,
+    not what they received.
+16. The organizer can delete the completed exchange only after every current
+    participant has confirmed receipt. Require a confirmation step before
+    deletion. Delete participant, pairing, invitation, confirmation, and
+    assignment data; retain the organizer identity. The next exchange can then
+    be opened.
+17. Persisted assignment data remains encrypted until deletion. The data key
+    must remain stable and backed up while the exchange is retained; losing it
+    makes pending or retained assignments unrecoverable. Telegram and the host
+    can access messages the bot processes; bot chats are not end-to-end
+    encrypted.
 
 ## Testing Strategy
-- Add automated tests for assignment constraints, completeness, uniqueness,
-  impossible participant/partner configurations, and repeatability of validity
-  across randomized draws.
-- Add tests for registration and draw lifecycle behavior, including the no-partial-
-  delivery behavior when a valid draw cannot be made.
-- Verify that assignment details are only sent to each giver's private chat and
-  failures are surfaced to the organizer.
-- Test organizer claiming, event invite codes, partner replacement, and access
-  control.
-- Test encrypted pending-draw recovery, retry without changing assignments,
-  deletion after full delivery, and failure when the configured key is missing or
-  invalid.
-- Manually verify the end-to-end Telegram flow with a test bot before using it
-  for the Christmas exchange.
+- Use JUnit Jupiter tests under `src/test/java/com/secretsanta/`.
+- Test private onboarding, Telegram identity/name confirmation, invite
+  validation/expiry, organizer auto-enrollment, duplicate joins, restart
+  recovery, manual reset confirmation, and authorization.
+- Test pair request send, accept, decline, cancel, one-open-request limits,
+  unpaired-only rules, organizer overrides, notifications, and restart recovery.
+- Test complete assignment constraints, impossible configurations, no partial
+  delivery, and inclusion of the organizer as a participant.
+- Test that each fake private recipient receives only their own assignment and
+  the organizer-facing UI/log output contains no other assignment mappings.
+- Test encrypted persistence/tamper rejection, replacement-draw generations,
+  failed-delivery retry without redrawing, stale buttons, acknowledgement
+  tracking/reset on reroll, and deletion only after all current participants
+  confirm.
+- Use the offline simulator for manual interaction tests without Telegram
+  credentials or network access. Use a separate test bot for Telegram transport
+  verification before any real exchange.
+- Run `mvn clean test` and `mvn clean package` on Java 27 before approval for
+  release. No numeric coverage threshold is currently defined.
 
 ## Boundaries
-- **Always:** Keep assignments private; validate the full assignment before sending
-  any result; report invalid configurations and delivery failures explicitly; keep
-  credentials out of source control; encrypt locally persisted assignments; delete
-  the pending draw after full delivery.
-- **Ask first:** Add dependencies beyond the approved JUnit Jupiter and Maven Exec
-  Plugin; add CI configuration; broaden to multiple exchanges/groups or email; or
-  change the approved organizer, pairing, data-retention, or delivery policies.
-- **Never:** Send an incomplete or invalid draw as if it succeeded; publish
-  assignments to a shared chat; commit real bot credentials.
+- **Always:** Keep all participant actions and assignment delivery in private
+  chats; validate all incoming text/callbacks; recheck organizer permissions
+  for each protected action; persist exchange state before acknowledging
+  success; encrypt assignment data; redact recipient mappings from organizer
+  UI and logs; retry the same draw after a possible delivery; make destructive
+  reset/cleanup actions explicit and confirmed.
+- **Ask first:** Add dependencies or external services; change the single-active-
+  exchange scope; collect additional Telegram profile data; change assignment,
+  pairing-consent, persistence, reassignment, or cleanup policies; deploy to a
+  production host.
+- **Never:** Commit real secrets; send assignments to a group; show or log the
+  full assignment mapping to the organizer; replace a draw while its delivery
+  may be partially complete; reset an in-progress draw; delete retained
+  participant/assignment state before the required confirmations.
 
 ## Success Criteria
-- Every registered participant is included exactly once as a giver and exactly
-  once as a recipient after a successful draw.
-- No successful draw contains a self-assignment or a partner-to-partner
-  assignment.
-- An impossible draw sends zero assignment messages and gives the organizer an
-  actionable error.
-- Each participant receives only their own assignment in a private Telegram chat.
-- Only the claimed organizer can inspect the roster, pair participants, or control
-  the exchange.
-- A partial draw is recoverable after restart without changing any assignment.
-- Completed exchanges leave no roster or pending assignment data on disk.
-- Build and automated tests pass, and the complete flow is verified with a test bot.
+- Organizer and participants can complete the entire flow with Telegram buttons
+  and private text prompts, without relying on command syntax for routine tasks.
+- The organizer is automatically included and receives one assignment.
+- Participants enter the correct exchange, confirm/edit their names, and create
+  partner exclusions only by mutual acceptance.
+- Assignment cannot start while any participant pair request remains unresolved.
+- The organizer can review and override pairs without seeing assignment
+  mappings.
+- Active exchange and pending delivery survive restarts; a confirmed pre-draw
+  reset clears only the intended exchange.
+- Every completed draw is one-to-one and excludes self and accepted partners.
+- Each participant receives only their own current assignment privately.
+- Organizer-facing messages and application logs reveal no full mapping.
+- Failed delivery never triggers a new draw; explicit complete redraws notify
+  everyone and replace all assignments consistently.
+- Cleanup is unavailable until every participant confirms the current draw and
+  the organizer confirms deletion.
+- Tests/build pass and a separate test-bot walkthrough verifies Telegram
+  transport before real use.
 
-## Resolved Decisions
-- Organizer: one-time setup-code claim, with the organizer's Telegram user ID
-  persisted locally.
-- Enrollment: organizer opens registration; the bot generates an invite code for
-  participants to join privately.
-- Partner rules: organizer pairs from the roster; pairing a participant again
-  replaces their existing pair and notifies the organizer.
-- Data: roster stays in memory; organizer ID is local; pending draw is encrypted
-  locally and deleted after successful delivery.
-- Delivery failure: retry the same draw indefinitely; never redraw after any
-  assignment may have been sent.
-- Lifecycle: one active exchange; after full delivery, clear the roster and draw.
-- Build and tests: Java 27, Maven standard layout, JUnit Jupiter, and Maven Exec
-  Plugin.
-- Encryption key: stable Base64-encoded 256-bit key supplied as
-  `SECRET_SANTA_DATA_KEY`; losing it makes an undelivered draw unrecoverable.
+## Open Questions
+- No remaining product-flow questions from the confirmed intent.
+- The hosting platform and production dependency-audit method remain launch
+  decisions; they do not block this product specification.

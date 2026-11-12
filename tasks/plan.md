@@ -1,112 +1,165 @@
-# Implementation Plan: Secret Santa Telegram Bot
+# Implementation Plan: Private Secret Santa Exchange
+
+## Status
+Approved implementation plan for the revised specification. Task 7 is complete;
+subsequent work remains gated by the ordered task list and checkpoints below.
 
 ## Overview
-Turn the existing root-level Java Telegram bot into a reliable, single-group
-Secret Santa bot. The organizer claims control, opens registration and shares a
-generated invite code; participants join in private chats. The organizer pairs
-participants and starts the draw, and each participant privately receives exactly
-one assignment. Product and technical decisions are recorded in the updated spec;
-implementation is gated on human approval of that update.
+Extend the existing Java 27 Telegram bot from transient registration and
+command-driven pairing into a durable, button-driven private exchange. Preserve
+the tested assignment generator, organizer identity store, encrypted file
+handling patterns, fake Telegram messenger, and offline simulator. Persist one
+versioned exchange state, add participant-consented pairs, and retain each
+draw until everyone confirms the current assignment and the organizer deletes
+the exchange.
 
 ## Existing Project Baseline
-- Java source is currently at the repository root in `SecretSantaBot.java`.
-- `pom.xml` targets Java 17 and includes Telegram Bots 6.9.7.1 and SLF4J Simple
-  2.0.9.
-- The current bot keeps participants in memory, uses a shared couple ID, and has
-  `/register`, `/list`, and `/run` commands.
-- No test framework or persistent store is configured.
-- `SecretSantaBot.java` and `pom.xml` already have uncommitted changes. Preserve
-  and integrate those changes; do not revert them.
+- Java 27, Maven, Telegram Bots 6.9.7.1, JUnit Jupiter, and a Docker pilot are
+already configured.
+- `AssignmentGenerator` enforces one-to-one assignments and rejects self and
+partner assignments.
+- `OrganizerStore` persists organizer identity. `ExchangeService` currently
+holds the invite, roster, and organizer-managed pairs in memory.
+- `PendingDrawStore` provides AES-256-GCM encrypted, atomic file persistence,
+file locks, and delivery progress. `PendingDrawService` deletes the draw and
+roster after all messages are delivered, so it must be changed to retain an
+exchange until cleanup.
+- `SecretSantaBot` currently parses commands and has organizer-only pairing
+callbacks. `TelegramMessenger` and tests provide a fakeable transport boundary.
+- `OfflineBotSimulator.java` has a pre-existing uncommitted modification.
+Preserve and integrate it only in the simulator task; do not revert or overwrite
+unrelated changes.
+- Tasks 1-6 in `tasks/todo.md` are completed baseline work. Their previous
+in-memory pre-draw behavior is superseded by the approved specification.
 
 ## Architecture Decisions
-- Target Java 27 as specified. Validate the installed JDK, Maven compiler support,
-  and existing dependency compatibility before building on that target.
-- Keep Telegram private messages as the participant interaction and assignment
-  delivery channel.
-- Organizer claims control with a one-time setup code. Persist only the
-  organizer's Telegram user ID locally.
-- Organizer opens registration and shares a generated invite code. Keep the
-  roster and open-registration state in memory; a restart before the draw loses
-  both.
-- Organizer pairs registered participants. Setting a new pair replaces any
-  existing pair for either selected participant and notifies the organizer.
-- Persist a pending draw locally with AES-256-GCM and a stable external key.
-  Retry the same assignments after delivery failures or restart; never redraw
-  after any assignment may have been sent. Delete the pending draw when all
-  deliveries succeed.
-- Use JUnit Jupiter, the standard Maven source layout, and Maven Exec Plugin.
-- Keep assignment generation separate from Telegram update handling so its
-  constraints can be tested without network access.
-- Provide bot credentials and the encryption key through environment variables;
-  never add them to source.
+- Keep the existing Java/Maven stack and local Docker volume; do not add a
+database, service, or dependency without approval.
+- Introduce one versioned exchange snapshot in the existing data directory.
+Reuse the current AES-GCM, fresh nonce, atomic replacement, validation, and
+single-process/file-lock patterns. Encrypt the whole snapshot, including
+participant and pairing data, so assignments and other exchange details share
+one durable, consistent state. Keep the existing stable data key backed up
+until the exchange is deleted.
+- Keep organizer identity separate from exchange lifecycle so cleanup does not
+remove the organizer claim. The snapshot contains the invite/registration
+state, participant identities/display names, reciprocal pairs, pending pair
+requests, draw generation, current assignment data, delivery progress, and
+receipt confirmations.
+- Treat the exchange as a state machine:
+
+  `EMPTY -> REGISTRATION_OPEN -> DRAW_DELIVERING -> AWAITING_CONFIRMATIONS`
+
+  The organizer may reset only `REGISTRATION_OPEN` after confirmation. A fully
+  delivered draw may transition to a new `DRAW_DELIVERING` generation after an
+  explicit replacement confirmation. Cleanup requires all current-generation
+  receipts plus organizer confirmation, then returns to `EMPTY`.
+- Migrate an existing encrypted `pending-draw.enc` before normal startup
+  operations. Convert its assignments and delivery progress into the new
+  snapshot, save and verify that snapshot first, and only then remove the legacy
+  file. A partially delivered legacy draw must resume unchanged. A pre-draw
+  roster from the old in-memory implementation cannot be recovered after a
+  restart; do not claim otherwise.
+- Keep domain rules in services and Telegram updates/buttons in
+  `SecretSantaBot`. Authenticate organizer actions on every callback and bind
+  assignment confirmations to the current draw generation.
+- Extend the fake messenger and offline simulator for deterministic interaction
+  and privacy checks. No test should need a real Telegram credential.
 
 ## Dependency Graph
 
 ```text
-Approve updated spec
-  └── Java 27 build, test, Maven layout, and run setup
-        ├── Assignment generator and automated tests
-        └── Organizer claim and exchange opening
-              └── Participant invite registration and partner pairing
-                    └── Encrypted pending draw, private delivery, and retry
-                          └── End-to-end verification and operating documentation
+Completed Java/Maven, assignment, organizer, and delivery foundations (Tasks 1-6)
+  -> 7 encrypted durable exchange snapshot
+  -> 8 persisted lifecycle and organizer enrollment
+  -> 9 private onboarding buttons
+  -> 10 mutual pair-consent rules
+  -> 11 pairing buttons and organizer overrides
+  -> 12 retained draw delivery and legacy migration
+  -> 13 receipt confirmation and deletion
+  -> 14 complete replacement draws and generation-safe callbacks
+  -> 15 simulator, operating docs, and test-bot walkthrough
 ```
 
 ## Task List
 
-### Phase 1: Decisions and Foundation
-1. Approve the resolved decisions in the updated spec.
-2. Establish the Java 27 build, test, and run foundation.
-3. Implement and test valid one-to-one assignment generation.
+### Phase 1: Durable Exchange and Onboarding
+- Task 7: Create the encrypted, versioned exchange snapshot.
+- Task 8: Persist exchange lifecycle and automatically enroll the organizer.
+- Task 9: Add private button-driven onboarding and pre-draw reset.
 
-### Checkpoint: Foundation
-- Java 27 build and test commands run successfully.
-- Assignment tests cover all constraints and impossible configurations.
-- Human review confirms the resolved choices recorded in the spec.
+### Checkpoint: Durable Onboarding
+- Exchange state reloads after restart and fails explicitly on invalid or
+  undecryptable data.
+- Organizer and participants can join using private chats, and the organizer is
+  included in the persisted roster.
+- A confirmed pre-draw reset clears only the active exchange.
 
-### Phase 2: Participant and Organizer Flows
-4. Implement organizer claim and exchange setup.
-5. Implement participant enrollment and partner pairing.
-6. Deliver assignments privately and handle delivery failures accurately.
+### Phase 2: Pair Consent and Organizer Controls
+- Task 10: Implement mutual participant pair requests and consent rules.
+- Task 11: Add participant pairing buttons and organizer pairing overrides.
 
-### Checkpoint: Core Features
-- Registration, organizer control, and draw transitions work together.
-- No assignment is sent for an invalid draw.
-- Successful delivery sends exactly one private assignment to each participant;
-  failures are visible and never reported as complete success.
-- Human review confirms the implementation still matches the approved spec.
+### Checkpoint: Pairing
+- Consent, one-open-request limits, and reciprocal exclusions survive restart.
+- The organizer can review and change pairs without seeing assignment mappings.
+- Assignment remains blocked until all pending requests are accepted, declined,
+  or canceled by their requester.
 
-### Phase 3: Integration and Handoff
-7. Verify the complete Telegram flow and document setup and operation.
+### Phase 3: Draw, Receipt, and Cleanup
+- Task 12: Retain and deliver a durable draw with same-draw retries and legacy
+  migration.
+- Task 13: Add the assignment button, receipt confirmations, and guarded cleanup.
+- Task 14: Add complete replacement draws and reject stale callbacks.
+
+### Checkpoint: Exchange Lifecycle
+- Partial delivery always retries the same assignments, including after restart.
+- Every participant receives only their own current assignment.
+- A replacement draw reaches everyone as one generation and clears old receipts.
+- Cleanup is available only after everyone confirms the current draw.
+
+### Phase 4: Verification and Handoff
+- Task 15: Update the offline simulator and operating documentation, then
+  verify the full flow with a separate Telegram test bot.
 
 ### Checkpoint: Complete
-- Automated tests and `mvn clean package` pass on Java 27.
-- Test-bot flow verifies registration through assignment delivery.
-- Setup instructions require no committed secrets and define data cleanup.
-- All success criteria in the approved spec are met.
+- All approved specification criteria have tests or a documented manual check.
+- `mvn clean test` and `mvn clean package` pass on Java 27.
+- The simulator works without Telegram access; a test-bot walkthrough verifies
+  private Telegram delivery before a real exchange.
+- Documentation describes persistent-state backup, key retention, migration,
+  reset, redraw, confirmation, and cleanup.
 
 ## Risks and Mitigations
 | Risk | Impact | Mitigation |
 |---|---|---|
-| Java 27 toolchain or an existing library is incompatible | High | Confirm JDK and Maven compiler support and compile a minimal baseline before feature work. |
-| Random search may fail to find an existing valid assignment | High | Use a constraint-aware complete assignment algorithm and test valid and impossible configurations. |
-| A restart before the draw loses the in-memory roster | Medium | Tell the organizer to reopen registration and share a new invite code; do not imply roster recovery. |
-| Telegram send failures can leave some participants informed and others not | High | Save the validated draw encrypted before sending, record delivery progress, retry the same recipients, and report partial delivery accurately. |
-| Encryption key loss makes a pending draw unrecoverable | High | Require a stable externally supplied key and document secure backup; fail explicitly if the key is missing or invalid. |
-| Unauthorized users claim control or access organizer actions | High | Require the configured one-time claim code and enforce the persisted organizer identity on organizer-only commands. |
-| Relationship data or assignment details leak through logs or shared chats | High | Keep the roster in memory, encrypt pending assignments, keep assignments out of logs/shared messages, and test privacy boundaries. |
-| Existing local edits overlap implementation changes | Medium | Inspect and preserve current edits in `SecretSantaBot.java` and `pom.xml`; avoid destructive git operations. |
+| Snapshot corruption or a lost/wrong key blocks access to the open exchange | High | Authenticate encrypted state, validate every decoded field, fail explicitly, preserve old files on failed replacement, and document key/volume backups. |
+| Existing `pending-draw.enc` is partially delivered at upgrade time | High | Add tested, idempotent migration that persists the new snapshot before removing the legacy file; resume the same recipients. |
+| Legacy pre-draw roster exists only in memory | High | It cannot be migrated. Before deploying, ensure the old bot has no active pre-draw exchange; communicate this limitation. |
+| Telegram send succeeds but progress write fails | High | Retry only the persisted current generation; duplicate delivery may occur, but no replacement assignment is generated. |
+| Stale pairing or receipt callback is replayed | High | Use flow tokens for pairing and draw-generation identifiers for receipt callbacks; revalidate authorization and state on every callback. |
+| UI or logs leak the assignment map | High | Keep mapping out of organizer-facing status and log fields; test captured messages/log output using fake transport. |
+| Existing uncommitted simulator work conflicts with changes | Medium | Leave it untouched until Task 15, inspect and integrate its changes, and never discard it as cleanup. |
+| Telegram test-bot credentials are unavailable | Medium | Keep all domain and simulator checks offline; perform live transport verification only with a separate test bot configured locally. |
 
-## Decision Gate
-The user has selected the decisions recorded in
-`docs/SPEC-secret-santa-telegram-bot.md`. The updated spec must be explicitly
-approved before implementation begins. JUnit Jupiter, the Maven Exec Plugin,
-standard Maven source layout, and encrypted pending-draw persistence are approved;
-other dependencies, CI configuration, or changes to the chosen behavior require
-approval.
+## Open Questions
+- No product-flow questions remain; assignment is blocked until every open pair
+  request is resolved.
+- A separate Telegram test bot must be available locally for Task 15; never use
+  production credentials for verification.
+- Production hosting and dependency-audit method remain launch decisions and are
+  outside this implementation plan.
 
 ## Verification Commands
-- Focused tests: `mvn test`
-- Full build: `mvn clean package`
-- End-to-end: manually exercise the test bot using the documented run command and
-  test credentials supplied outside source control.
+Run from the directory containing `pom.xml`, using JDK 27:
+
+```powershell
+mvn clean test
+mvn clean package
+docker build --target build --tag secret-santa-bot:offline-tests .
+docker run --rm -it --entrypoint java secret-santa-bot:offline-tests -cp "/workspace/target/classes:/workspace/target/dependency/*" com.secretsanta.OfflineBotSimulator
+```
+
+## Approval Gate
+Review and approve this plan before implementation starts. Any change to pairing,
+assignment, privacy, reset, redraw, retention, or cleanup behavior requires
+updating the approved specification first.

@@ -1,222 +1,302 @@
 # Secret Santa Bot Implementation Tasks
 
-Tasks are ordered by dependency. Do not start implementation tasks until this plan
-and the resolved spec decisions have been reviewed and approved.
+Tasks 1-6 below record the completed technical foundation. The approved revised
+specification supersedes the earlier in-memory pre-draw behavior. Tasks 7-15
+implement the revised private, durable exchange and must not start until this
+plan is approved.
 
-## Task 1: Resolving product and architecture decisions
+## Completed Baseline
+- [x] Task 1: Resolving product and architecture decisions for the original
+  single-group bot.
+- [x] Task 2: Establishing Java 27 build and JUnit tooling.
+- [x] Task 3: Implementing and testing one-to-one assignment generation.
+- [x] Task 4: Implementing organizer claim and exchange setup.
+- [x] Task 5: Implementing participant enrollment and organizer-managed pairs.
+- [x] Task 6: Delivering private assignments with encrypted pending-draw retry.
 
-**Description:** Record the decisions for organizer authority, participant
-enrollment, partner pairing, persistence and retention, delivery recovery, test
-tooling, and project layout in the spec and obtain approval before implementation.
-
-**Acceptance criteria:**
-- [x] Decisions are recorded in `docs/SPEC-secret-santa-telegram-bot.md`.
-- [x] Human explicitly approves the updated spec.
+## Task 7: Creating an encrypted durable exchange snapshot
 
 **Status:** Complete.
 
-**Verification:**
-- [x] Human reviewed and explicitly approved the updated spec.
-
-**Dependencies:** None
-
-**Files likely touched:**
-- `docs/SPEC-secret-santa-telegram-bot.md`
-
-**Estimated scope:** Small
-
-## Task 2: Establishing Java 27 build and test tooling
-
-**Status:** Complete; Telegram network startup will be verified with a test bot
-in Task 7.
-
-**Description:** Configure the project to compile on Java 27, add the approved
-JUnit Jupiter test setup, move code into the standard Maven source layout, and
-provide a safe Maven Exec Plugin launch using external credentials.
+**Description:** Add a versioned, validated snapshot for all active exchange
+state. Encrypt it with AES-256-GCM and persist it atomically under the existing
+data directory, reusing current locking and file-replacement patterns.
 
 **Acceptance criteria:**
-- [x] Maven compiler configuration targets Java 27 and all current dependencies
-  compile successfully with the selected JDK.
-- [x] JUnit Jupiter runs through Maven, and a minimal test proves the setup is
-  active.
-- [x] A documented run command reads the bot token and username from the agreed
-  environment configuration, along with the setup code and encryption key, and
-  has no hard-coded real credentials.
+- [x] Snapshot represents registration/invite state, participant identities and
+  names, accepted pairs, pending requests, draw generation, assignments,
+  per-recipient delivery, and current-generation confirmations.
+- [x] Save/load uses a fresh nonce and authenticated encryption; invalid,
+  truncated, oversized, or wrong-key state fails explicitly.
+- [x] Atomic-write failure preserves the previous readable snapshot.
 
 **Verification:**
-- [x] `mvn clean package` passes on Java 27.
-- [x] `mvn exec:java` resolves the configured entry point and fails fast without
-  required configuration. A live Telegram connection is deferred to Task 7,
-  which requires a test bot credential configured locally.
+- [x] Focused store tests cover round-trip, encryption, tampering, malformed
+  state, fresh nonces, and failed atomic replacement.
+- [x] Full test suite passes; Java 27 Docker build runs tests and packages.
 
-**Dependencies:** Task 1
+**Dependencies:** Completed Tasks 1-6
 
 **Files likely touched:**
-- `pom.xml`
-- `.gitignore` or configuration example, if needed
-- `README.md` or run documentation
-- Minimal test source
+- `src/main/java/com/secretsanta/ExchangeStore.java` (new)
+- `src/main/java/com/secretsanta/ExchangeState.java` (new)
+- `src/test/java/com/secretsanta/ExchangeStoreTest.java` (new)
 
 **Estimated scope:** Medium
 
-## Task 3: Implementing and testing assignment generation
+## Task 8: Persisting exchange lifecycle and organizer enrollment
 
-**Description:** Extract assignment generation from Telegram handling and produce
-a complete one-to-one draw that excludes self-assignments and partner pairs.
+**Description:** Connect organizer and exchange services to the durable snapshot.
+Persist invites, registration, roster, and pair state; automatically enroll the
+organizer using their Telegram identity; allow a confirmed reset only before a
+draw begins.
 
 **Acceptance criteria:**
-- [x] Every generated result includes each registered participant exactly once as
-  giver and exactly once as recipient.
-- [x] No generated result assigns a participant to themselves or their partner.
-- [x] Impossible configurations fail explicitly without returning a partial draw.
+- [ ] Active exchange fields reload consistently after restart, including its
+  invite code and organizer participant.
+- [ ] Organizer enrollment is unique and persists the Telegram user ID and
+  confirmed display name.
+- [ ] A confirmed pre-draw reset clears exchange data but retains organizer
+  identity; reset is rejected after draw starts.
 
 **Verification:**
-- [x] Focused assignment tests pass, including small valid cases and impossible
-  partner configurations.
-- [x] `mvn test` and `mvn package` pass.
+- [ ] Service tests cover restart recovery, organizer auto-enrollment,
+  duplicate enrollment, reset confirmation/state restrictions, and write
+  failures.
+- [ ] `mvn test` passes.
 
-**Dependencies:** Tasks 1 and 2
+**Dependencies:** Task 7
 
 **Files likely touched:**
-- Assignment generator source
-- Participant or assignment model source
-- Assignment generator tests
+- `src/main/java/com/secretsanta/ExchangeService.java`
+- `src/main/java/com/secretsanta/OrganizerService.java`
+- `src/main/java/com/secretsanta/ExchangeStore.java`
+- `src/test/java/com/secretsanta/ExchangeServiceTest.java`
+- `src/test/java/com/secretsanta/OrganizerServiceTest.java`
 
 **Estimated scope:** Medium
 
-## Checkpoint: After Tasks 1-3
-- [x] Resolved spec decisions are approved.
-- [x] Java 27 compilation and tests pass.
-- [x] Assignment constraints and impossible cases are covered by tests.
-- [x] Human reviews the foundation before participant-flow work proceeds.
+## Task 9: Adding private button-driven onboarding
 
-## Task 4: Implementing organizer claim and exchange setup
-
-**Description:** Let the organizer claim control with the one-time setup code,
-persist the organizer ID, open an exchange, and receive a generated invite code
-to share with participants.
+**Description:** Replace routine command-based onboarding with private prompts
+and buttons for organizer claim/open, participant invite entry, and name
+confirmation/editing. Keep text input only for codes and edited names.
 
 **Acceptance criteria:**
-- [x] Only the first valid claim can establish the organizer; the organizer ID
-  persists across restart and unauthorized organizer commands are rejected.
-- [x] The organizer can open registration and receive a generated event invite
-  code privately.
-- [x] A pre-draw restart loses the active roster and requires a newly opened
-  registration and invite code.
+- [ ] `/start` presents a private button-oriented flow; organizer claim and
+  exchange opening are available only in the organizer's private chat.
+- [ ] Organizer is included automatically; invite code is sent only to them.
+- [ ] Organizer can request and confirm a pre-draw reset; reset is rejected
+  after assignment starts.
+- [ ] A participant can enter the valid invite, confirm/edit their Telegram first
+  name, and join once; registration closes at draw start.
+- [ ] Unauthorized, group-chat, invalid, duplicate, or closed-registration
+  interactions are rejected without changing exchange state.
 
 **Verification:**
-- [x] Tests cover claim-code validation, organizer authorization, and restart.
-- [x] Tests cover opening registration and invite-code behavior.
-- [x] `mvn test` and `mvn package` pass.
+- [ ] Bot tests exercise callback and text flows with fake Telegram users and
+  assert private delivery and organizer authorization.
+- [ ] `mvn test` passes.
 
-**Dependencies:** Tasks 1-3
+**Dependencies:** Task 8
 
 **Files likely touched:**
-- Organizer/configuration source
-- Exchange lifecycle source
-- Local organizer state source
-- Telegram command handling
-- Organizer and lifecycle tests
+- `src/main/java/com/secretsanta/SecretSantaBot.java`
+- `src/test/java/com/secretsanta/SecretSantaBotTest.java`
 
 **Estimated scope:** Medium
 
-## Task 5: Implementing participant enrollment and partner pairing
+## Checkpoint: After Tasks 7-9
+- [ ] Encrypted state survives restart, and organizer/participant onboarding
+  works end-to-end with a fake messenger.
+- [ ] Pre-draw reset is confirmed and cannot clear an in-progress draw.
+- [ ] Human reviews the durable onboarding slice before pairing work.
 
-**Description:** Let participants join the currently open exchange with its
-invite code, register their display name, and let the organizer create partner
-pairs from the roster.
+## Task 10: Implementing mutual participant pair consent
+
+**Description:** Add pending pair requests with accept, decline, and requester
+cancel actions. Persist requests and enforce reciprocal, one-partner exclusions.
 
 **Acceptance criteria:**
-- [x] Only users with the current invite code can join; repeated registration by
-  one Telegram user does not create duplicates.
-- [x] Only the organizer can inspect the roster or manage pairs.
-- [x] Pairing one participant with another blocks both directions; selecting an
-  already paired participant replaces the previous pair and notifies the
-  organizer.
+- [ ] Only unpaired participants without another open request can request or
+  accept a partner; self-pairing and duplicate requests are rejected.
+- [ ] Acceptance creates a reciprocal pair; decline/cancel clears only the
+  relevant request; accepted pairs cannot be changed by participants.
+- [ ] Pending requests and accepted pairs survive restart.
+- [ ] Assignment cannot start while any pair request remains unresolved.
 
 **Verification:**
-- [x] Tests cover valid/invalid invite codes, duplicate joins, access control,
-  reciprocal partner restrictions, and pair replacement.
-- [x] `mvn test` and `mvn package` pass.
+- [ ] Domain tests cover request state transitions, conflicts, restart recovery,
+  organizer changes, and invalid participant IDs.
+- [ ] `mvn test` passes.
 
-**Dependencies:** Task 4
+**Dependencies:** Task 8
 
 **Files likely touched:**
-- Participant/registration source
-- Partner-pair source
-- Telegram command handling
-- Registration and pairing tests
+- `src/main/java/com/secretsanta/ExchangeService.java`
+- `src/main/java/com/secretsanta/ExchangeState.java`
+- `src/test/java/com/secretsanta/ExchangeServiceTest.java`
+- `src/test/java/com/secretsanta/ExchangeStoreTest.java`
 
 **Estimated scope:** Medium
 
-## Task 6: Delivering assignments privately and reporting failures
+## Task 11: Adding pairing buttons and organizer overrides
 
-**Description:** Send each validated assignment only to the corresponding
-participant's private chat, persist the pending draw encrypted, and apply the
-approved retry policy when Telegram delivery fails.
+**Description:** Expose participant request/response actions through private
+buttons, add organizer roster/request review and direct pairing overrides, and
+notify affected participants privately when the organizer changes a pair.
 
 **Acceptance criteria:**
-- [x] No result is sent until the complete assignment satisfies all constraints.
-- [x] Each participant receives only their own recipient; assignment details are
-  absent from group messages and logs.
-- [x] The draw is encrypted with AES-256-GCM before sending, can be recovered
-  after restart, and is deleted only after all messages succeed.
-- [x] Failed sends can be retried with the original recipient; no replacement
-  draw is allowed after any assignment may have been sent.
-- [x] Delivery success is reported only when all required sends succeed.
+- [ ] Participant callbacks are private, authorized against the callback user,
+  and invalidated when the request or exchange state changes.
+- [ ] Organizer can review roster, pair and pending-request status, then create
+  or replace pairs without exposing assignment recipients.
+- [ ] Affected participants are notified of organizer pairing changes; messages
+  and logs contain no assignment mapping.
 
 **Verification:**
-- [x] Tests use a controllable Telegram sender to verify private destinations,
-  message contents, partial-delivery recovery, encryption-key failures, and
-  deletion after success.
-- [x] `mvn clean package` passes on Java 27.
+- [ ] Bot tests cover request lifecycle buttons, stale callbacks, unauthorized
+  callbacks, organizer overrides, private notifications, and redaction.
+- [ ] `mvn test` passes.
 
-**Dependencies:** Tasks 3-5
+**Dependencies:** Task 10
 
 **Files likely touched:**
-- Assignment delivery source
-- Telegram send/error handling
-- Exchange draw state source
-- Delivery tests
+- `src/main/java/com/secretsanta/SecretSantaBot.java`
+- `src/test/java/com/secretsanta/SecretSantaBotTest.java`
 
 **Estimated scope:** Medium
 
-## Checkpoint: After Tasks 4-6
-- [x] Registration and partner constraints are integrated with organizer controls.
-- [x] Invalid draws send no assignments.
-- [x] Delivery failures are explicit; the same encrypted draw is recoverable and
-  never silently replaced.
-- [ ] Human reviews the complete core flow before final handoff.
+## Task 12: Retaining and delivering durable draws
 
-## Task 7: Verifying the end-to-end flow and documenting operation
-
-**Description:** Run the bot against a test Telegram bot, verify the approved
-participant-to-draw flow, and document setup, commands, privacy limits, and data
-cleanup.
+**Description:** Integrate assignment generation with the exchange snapshot.
+Close registration, persist a complete draw before sending, track delivery, and
+retry that exact draw. Migrate any existing encrypted pending draw without
+discarding partially delivered assignments.
 
 **Acceptance criteria:**
-- [ ] Test-bot verification covers participant registration, partner exclusions,
-  organizer draw, private delivery, and the agreed failure/restart cases.
-- [ ] Documentation explains Java 27 setup, required external configuration,
-  Maven build/test/run commands, organizer usage, and data retention/deletion.
-- [ ] No real bot credentials or assignment details are committed or written to
-  logs.
+- [ ] A complete valid draw is persisted before any Telegram send; invalid draws
+  send nothing and leave the roster correctable.
+- [ ] A draw is rejected until all pair requests are accepted, declined, or
+  canceled.
+- [ ] Each participant, including the organizer, receives only their own
+  assignment; completed delivery retains the exchange and encrypted draw.
+- [ ] Failed delivery and restart retry only undelivered recipients using the
+  same assignments.
+- [ ] Legacy `pending-draw.enc` is migrated idempotently; the legacy file is
+  removed only after the new encrypted state is saved successfully.
+
+**Verification:**
+- [ ] Service/store tests cover no partial draw, same-draw retry, restart,
+  legacy migration, write failure, wrong key, and retained completed delivery.
+- [ ] Captured organizer messages and logs contain no full assignment mapping.
+- [ ] `mvn test` passes.
+
+**Dependencies:** Tasks 7, 8, and 11
+
+**Files likely touched:**
+- `src/main/java/com/secretsanta/PendingDrawService.java`
+- `src/main/java/com/secretsanta/PendingDrawStore.java`
+- `src/main/java/com/secretsanta/ExchangeStore.java`
+- `src/test/java/com/secretsanta/PendingDrawServiceTest.java`
+- `src/test/java/com/secretsanta/PendingDrawStoreTest.java`
+
+**Estimated scope:** Medium
+
+## Task 13: Adding draw controls, receipt confirmation, and guarded cleanup
+
+**Description:** Add the organizer's private assignment button, participant
+Received/OK action, current-draw confirmation tracking, organizer status view,
+and explicit deletion after all participants confirm.
+
+**Acceptance criteria:**
+- [ ] Confirmation is recorded only for the current draw and is idempotent.
+- [ ] Organizer can start assignment from a private button and see delivery
+  progress without seeing assignment recipients.
+- [ ] Organizer can see who confirmed and aggregate status, but never their
+  assignment recipients.
+- [ ] Cleanup requires every current participant's confirmation and a separate
+  organizer confirmation; it removes exchange data but preserves organizer
+  identity.
+- [ ] Until cleanup, the exchange survives restart.
+
+**Verification:**
+- [ ] Tests cover participant confirmation, duplicate and unauthorized actions,
+  cleanup denial before all confirmations, confirmed deletion, and restart.
+- [ ] `mvn test` passes.
+
+**Dependencies:** Task 12
+
+**Files likely touched:**
+- `src/main/java/com/secretsanta/PendingDrawService.java`
+- `src/main/java/com/secretsanta/SecretSantaBot.java`
+- `src/test/java/com/secretsanta/PendingDrawServiceTest.java`
+- `src/test/java/com/secretsanta/SecretSantaBotTest.java`
+
+**Estimated scope:** Medium
+
+## Task 14: Implementing complete replacement draws
+
+**Description:** Allow the organizer to explicitly supersede a fully delivered
+draw before cleanup. Generate a complete replacement for everyone, notify all
+participants, and bind receipt callbacks to the new generation.
+
+**Acceptance criteria:**
+- [ ] Replacement is unavailable during incomplete delivery and requires
+  explicit organizer confirmation.
+- [ ] A full replacement is persisted before delivery, supersedes all previous
+  assignments, and is retried unchanged if any send fails.
+- [ ] All participants receive a private replacement notification and only
+  their current recipient; previous confirmations are cleared.
+- [ ] Stale prior-draw confirmation callbacks cannot acknowledge the new draw.
+
+**Verification:**
+- [ ] Tests cover valid replacement constraints, delivery failure/restart,
+  generation changes, cleared confirmations, stale callbacks, and privacy.
+- [ ] `mvn test` passes.
+
+**Dependencies:** Task 13
+
+**Files likely touched:**
+- `src/main/java/com/secretsanta/PendingDrawService.java`
+- `src/main/java/com/secretsanta/SecretSantaBot.java`
+- `src/test/java/com/secretsanta/PendingDrawServiceTest.java`
+- `src/test/java/com/secretsanta/SecretSantaBotTest.java`
+
+**Estimated scope:** Medium
+
+## Task 15: Updating the simulator, documentation, and end-to-end verification
+
+**Description:** Bring the no-network simulator and operator documentation into
+line with the approved private exchange flow, then verify transport with a
+separate Telegram test bot.
+
+**Acceptance criteria:**
+- [ ] Simulator supports private onboarding, mutual pairing, organizer draw,
+  delivery retry, confirmation, redraw, and cleanup without Telegram access.
+- [ ] README explains the button-driven flow, persistent state, key/volume
+  backup, legacy migration limits, reset, redraw, confirmations, and cleanup.
+- [ ] A separate test-bot walkthrough verifies private interactions and
+  delivery; no real credentials or assignments are committed or logged.
 
 **Verification:**
 - [ ] `mvn clean test` and `mvn clean package` pass on Java 27.
-- [ ] Complete test-bot walkthrough succeeds and any limitations are documented.
+- [ ] Offline simulator walkthrough succeeds without credentials/network.
+- [ ] Test-bot results and any environment limitation are recorded for handoff.
 
-**Dependencies:** Tasks 2-6
+**Dependencies:** Tasks 9, 11, 12, 13, and 14
 
 **Files likely touched:**
-- `README.md` or operating documentation
-- Existing specification, if implementation decisions changed
-- Minimal configuration example, if approved
+- `src/main/java/com/secretsanta/OfflineBotSimulator.java`
+- `src/test/java/com/secretsanta/OfflineBotSimulatorTest.java`
+- `README.md`
 
-**Estimated scope:** Small
+**Estimated scope:** Medium
 
 ## Checkpoint: Complete
-- [ ] All approved spec success criteria are met.
-- [ ] Automated tests and Java 27 build pass.
-- [ ] Test-bot walkthrough is complete.
+- [ ] All approved specification criteria have automated or documented manual
+  verification.
+- [ ] Full test suite and Java 27 build pass.
+- [ ] Test-bot walkthrough is complete or the credential/availability blocker
+  is explicitly documented.
 - [ ] Human approves the implementation handoff.

@@ -27,6 +27,15 @@ The bot must not show or log the full giver-to-recipient mapping to the organize
 The organizer trusts the running application and its host; this is not protection
 against someone who can inspect the bot process or its secrets.
 
+An open exchange, its pairs, pending requests, current assignments, delivery
+progress, and participant confirmations survive restarts. Before assignment,
+the organizer can reset an exchange after an explicit confirmation. After a draw
+is delivered, the organizer can request a complete replacement draw before
+cleanup; everyone receives the new assignment and prior results are superseded.
+Each participant confirms receipt with a private button. The organizer deletes
+the retained exchange only after every participant confirms and the organizer
+confirms deletion.
+
 ## Constraint
 Avoid sharing participant details with a separate Secret Santa website. Telegram is
 acceptable. Keep the first version focused on our group and easy to extend later.
