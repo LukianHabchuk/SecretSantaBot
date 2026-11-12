@@ -28,6 +28,8 @@ final class BotButtonController {
     private final Map<Long, PendingJoin> pendingJoins = new HashMap<>();
     private final Map<Long, String> pendingResetTokens = new HashMap<>();
     private final Map<String, Consumer<CallbackQuery>> onboardingActions;
+    private final Map<ExchangeService.RegistrationResult, Consumer<JoinAttempt>>
+            registrationActions;
     private final EnumMap<PendingInput, BiConsumer<InputContext, String>> inputHandlers =
             new EnumMap<>(PendingInput.class);
     private Long pendingPairParticipantId;
@@ -47,6 +49,38 @@ final class BotButtonController {
                 BotButtons.JOIN, this::requestJoin,
                 BotButtons.OPEN, this::openRegistrationFromButton,
                 BotButtons.RESET, this::requestResetConfirmation);
+        registrationActions = Map.of(
+                ExchangeService.RegistrationResult.REGISTERED,
+                attempt -> finishJoinAttempt(
+                        attempt.userId(),
+                        attempt.callbackId(),
+                        BotMessages.JOIN_CALLBACK,
+                        BotMessages.JOINED),
+                ExchangeService.RegistrationResult.ALREADY_REGISTERED,
+                attempt -> finishJoinAttempt(
+                        attempt.userId(),
+                        attempt.callbackId(),
+                        BotMessages.ALREADY_REGISTERED_CALLBACK,
+                        BotMessages.ALREADY_REGISTERED),
+                ExchangeService.RegistrationResult.INVALID_INVITE,
+                attempt -> finishJoinAttempt(
+                        attempt.userId(),
+                        attempt.callbackId(),
+                        BotMessages.INVALID_INVITE_CALLBACK,
+                        BotMessages.INVITE_INVALID_FINAL),
+                ExchangeService.RegistrationResult.REGISTRATION_CLOSED,
+                attempt -> finishJoinAttempt(
+                        attempt.userId(),
+                        attempt.callbackId(),
+                        BotMessages.REGISTRATION_CLOSED_CALLBACK,
+                        BotMessages.REGISTRATION_CLOSED_FINAL),
+                ExchangeService.RegistrationResult.INVALID_NAME,
+                attempt -> {
+                    pendingInputs.put(attempt.userId(), PendingInput.JOIN_NAME);
+                    responder.answerCallback(
+                            attempt.callbackId(), BotMessages.NAME_INVALID_CALLBACK);
+                    responder.sendText(attempt.userId(), BotMessages.JOIN_NAME_INVALID);
+                });
         inputHandlers.put(PendingInput.SETUP_CODE, this::claimOrganizer);
         inputHandlers.put(PendingInput.INVITE_CODE, this::promptJoinName);
         inputHandlers.put(PendingInput.JOIN_NAME, this::updateJoinName);
@@ -228,34 +262,7 @@ final class BotButtonController {
         try {
             ExchangeService.RegistrationResult result = exchangeService.register(
                     userId, pendingJoin.inviteCode(), pendingJoin.suggestedName());
-            switch (result) {
-                case REGISTERED ->
-                        finishJoinAttempt(
-                                userId, callbackId, BotMessages.JOIN_CALLBACK, BotMessages.JOINED);
-                case ALREADY_REGISTERED ->
-                        finishJoinAttempt(
-                                userId,
-                                callbackId,
-                                BotMessages.ALREADY_REGISTERED_CALLBACK,
-                                BotMessages.ALREADY_REGISTERED);
-                case INVALID_INVITE ->
-                        finishJoinAttempt(
-                                userId,
-                                callbackId,
-                                BotMessages.INVALID_INVITE_CALLBACK,
-                                BotMessages.INVITE_INVALID_FINAL);
-                case REGISTRATION_CLOSED ->
-                        finishJoinAttempt(
-                                userId,
-                                callbackId,
-                                BotMessages.REGISTRATION_CLOSED_CALLBACK,
-                                BotMessages.REGISTRATION_CLOSED_FINAL);
-                case INVALID_NAME -> {
-                    pendingInputs.put(userId, PendingInput.JOIN_NAME);
-                    responder.answerCallback(callbackId, BotMessages.NAME_INVALID_CALLBACK);
-                    responder.sendText(userId, BotMessages.JOIN_NAME_INVALID);
-                }
-            }
+            registrationActions.get(result).accept(new JoinAttempt(userId, callbackId));
         } catch (IOException exception) {
             LOGGER.log(Level.SEVERE, BotLogMessages.REGISTRATION_PERSIST_FAILED, exception);
             responder.answerCallback(callbackId, BotMessages.REGISTRATION_FAILED_CALLBACK);
@@ -528,4 +535,6 @@ final class BotButtonController {
     private record PendingJoin(String inviteCode, String suggestedName, String confirmationToken) {}
 
     private record InputContext(long userId, String firstName) {}
+
+    private record JoinAttempt(long userId, String callbackId) {}
 }
