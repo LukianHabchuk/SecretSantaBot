@@ -38,6 +38,10 @@ final class PendingDrawService {
     }
 
     String openRegistration(long organizerId) throws IOException {
+        return openRegistration(organizerId, "Organizer");
+    }
+
+    String openRegistration(long organizerId, String organizerName) throws IOException {
         if (!organizerService.isOrganizer(organizerId)) {
             throw new SecurityException("Only the organizer can open registration.");
         }
@@ -45,7 +49,11 @@ final class PendingDrawService {
             if (store.load().isPresent()) {
                 throw new PendingDrawInProgressException();
             }
-            return exchangeService.openRegistration(organizerId);
+            try {
+                return exchangeService.openRegistration(organizerId, organizerName);
+            } catch (ExchangeService.ExchangeInProgressException exception) {
+                throw new PendingDrawInProgressException();
+            }
         }
     }
 
@@ -75,7 +83,7 @@ final class PendingDrawService {
 
                 store.save(pendingDraw);
             }
-            organizerService.closeRegistration();
+            exchangeService.closeRegistration();
 
             int failedDeliveries = 0;
             for (PendingDrawStore.Assignment assignment : pendingDraw.assignments()) {

@@ -66,6 +66,24 @@ class ExchangeStoreTest {
     }
 
     @Test
+    void persistsClosedRegistrationAndItsRoster() throws Exception {
+        ExchangeStore store = new ExchangeStore(dataDirectory, KEY);
+        ExchangeState state = new ExchangeState(
+                ExchangeState.Phase.REGISTRATION_CLOSED,
+                null,
+                List.of(new ExchangeState.Participant(101L, "Organizer", null)),
+                List.of(),
+                0,
+                List.of(),
+                Set.of(),
+                Set.of());
+
+        store.save(state);
+
+        assertEquals(state, store.load().orElseThrow());
+    }
+
+    @Test
     void usesFreshEncryptionNonceForEverySave() throws Exception {
         ExchangeStore store = new ExchangeStore(dataDirectory, KEY);
         ExchangeState state = sampleState();

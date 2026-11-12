@@ -110,6 +110,10 @@ final class PendingDrawStore {
         this.atomicMoveOperation = Objects.requireNonNull(atomicMoveOperation);
     }
 
+    ExchangeStore exchangeStore() {
+        return new ExchangeStore(dataDirectory, key);
+    }
+
     Optional<PendingDraw> load() throws IOException {
         if (!Files.exists(pendingFile)) {
             return Optional.empty();

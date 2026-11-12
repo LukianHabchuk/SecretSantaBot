@@ -34,11 +34,12 @@ class PendingDrawServiceTest {
 
         assertEquals(PendingDrawService.Status.PENDING, firstResult.status());
         assertEquals(1, firstResult.failedDeliveries());
-        assertEquals(2, persistedDraw.deliveredGiverIds().size());
+        assertEquals(3, persistedDraw.deliveredGiverIds().size());
         assertFalse(organizerService.isRegistrationOpen());
 
         OrganizerService restartedOrganizerService = createOrganizerService();
-        ExchangeService restartedExchangeService = new ExchangeService(restartedOrganizerService);
+        ExchangeService restartedExchangeService =
+                createExchangeService(restartedOrganizerService);
         RecordingMessenger retryMessenger = new RecordingMessenger(null);
         PendingDrawService restartedService = new PendingDrawService(
                 new PendingDrawStore(dataDirectory, KEY),
@@ -104,7 +105,7 @@ class PendingDrawServiceTest {
         RecordingMessenger retryMessenger = new RecordingMessenger(null);
         PendingDrawService restartedService = new PendingDrawService(
                 new PendingDrawStore(dataDirectory, wrongKey),
-                new ExchangeService(createOrganizerService()),
+                createExchangeService(createOrganizerService()),
                 createOrganizerService(),
                 retryMessenger);
 
@@ -116,7 +117,7 @@ class PendingDrawServiceTest {
     @Test
     void impossibleDrawSendsNothingAndLeavesRosterAvailable() throws Exception {
         OrganizerService organizerService = createOrganizerService();
-        ExchangeService exchangeService = new ExchangeService(organizerService);
+        ExchangeService exchangeService = createExchangeService(organizerService);
         String inviteCode = exchangeService.openRegistration(100L);
         exchangeService.register(201L, inviteCode, "Guest 201");
         exchangeService.register(202L, inviteCode, "Guest 202");
@@ -129,7 +130,7 @@ class PendingDrawServiceTest {
         assertThrows(IllegalStateException.class, service::run);
 
         assertTrue(messenger.messages().isEmpty());
-        assertEquals(2, exchangeService.participants().size());
+        assertEquals(3, exchangeService.participants().size());
         assertTrue(store.load().isEmpty());
     }
 
@@ -142,7 +143,7 @@ class PendingDrawServiceTest {
 
     private ExchangeService createExchangeWithThreeParticipants(
             OrganizerService organizerService) throws Exception {
-        ExchangeService exchange = new ExchangeService(organizerService);
+        ExchangeService exchange = createExchangeService(organizerService);
         String inviteCode = exchange.openRegistration(100L);
         for (long userId = 201L; userId <= 203L; userId++) {
             assertEquals(
@@ -150,6 +151,10 @@ class PendingDrawServiceTest {
                     exchange.register(userId, inviteCode, "Guest " + userId));
         }
         return exchange;
+    }
+
+    private ExchangeService createExchangeService(OrganizerService organizerService) {
+        return new ExchangeService(organizerService, new ExchangeStore(dataDirectory, KEY));
     }
 
     private record SentMessage(long chatId, String text) {}

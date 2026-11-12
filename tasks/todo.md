@@ -46,24 +46,26 @@ data directory, reusing current locking and file-replacement patterns.
 
 ## Task 8: Persisting exchange lifecycle and organizer enrollment
 
+**Status:** Complete.
+
 **Description:** Connect organizer and exchange services to the durable snapshot.
 Persist invites, registration, roster, and pair state; automatically enroll the
 organizer using their Telegram identity; allow a confirmed reset only before a
 draw begins.
 
 **Acceptance criteria:**
-- [ ] Active exchange fields reload consistently after restart, including its
+- [x] Active exchange fields reload consistently after restart, including its
   invite code and organizer participant.
-- [ ] Organizer enrollment is unique and persists the Telegram user ID and
+- [x] Organizer enrollment is unique and persists the Telegram user ID and
   confirmed display name.
-- [ ] A confirmed pre-draw reset clears exchange data but retains organizer
+- [x] A confirmed pre-draw reset clears exchange data but retains organizer
   identity; reset is rejected after draw starts.
 
 **Verification:**
-- [ ] Service tests cover restart recovery, organizer auto-enrollment,
+- [x] Service tests cover restart recovery, organizer auto-enrollment,
   duplicate enrollment, reset confirmation/state restrictions, and write
   failures.
-- [ ] `mvn test` passes.
+- [x] `mvn test` passes; the Docker Java 27 build also runs the complete suite.
 
 **Dependencies:** Task 7
 

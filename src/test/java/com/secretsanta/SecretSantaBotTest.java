@@ -85,6 +85,8 @@ class SecretSantaBotTest {
         assertEquals(123L, inviteMessage.chatId());
         assertTrue(inviteMessage.text().matches(
                 "(?s).*Запрошувальний код: [A-Za-z0-9_-]{32}.*"));
+        bot.onUpdateReceived(update(123L, 123L, "private", "/list"));
+        assertTrue(sentMessages.getLast().text().contains("User 123"));
     }
 
     @Test
@@ -157,7 +159,8 @@ class SecretSantaBotTest {
         bot.onUpdateReceived(update(100L, 100L, "private", "/list"));
 
         assertTrue(messenger.sentMessages.get(2).text().contains("недійсний"));
-        assertTrue(messenger.sentMessages.getLast().text().contains("Поки що ніхто"));
+        assertTrue(messenger.sentMessages.getLast().text().contains("User 100"));
+        assertFalse(messenger.sentMessages.getLast().text().contains("Alex"));
     }
 
     @Test
@@ -171,7 +174,8 @@ class SecretSantaBotTest {
         bot.onUpdateReceived(update(100L, 100L, "private", "/list"));
 
         assertTrue(messenger.sentMessages.get(2).text().contains("лише в особистому чаті"));
-        assertTrue(messenger.sentMessages.getLast().text().contains("Поки що ніхто"));
+        assertTrue(messenger.sentMessages.getLast().text().contains("User 100"));
+        assertFalse(messenger.sentMessages.getLast().text().contains("Alex"));
     }
 
     @Test
@@ -396,6 +400,7 @@ class SecretSantaBotTest {
     private static Update update(long chatId, long userId, String chatType, String text) {
         User user = new User();
         user.setId(userId);
+        user.setFirstName("User " + userId);
 
         Chat chat = new Chat();
         chat.setId(chatId);

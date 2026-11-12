@@ -142,6 +142,7 @@ public final class OfflineBotSimulator {
     private static Update privateMessage(long userId, String text) {
         User user = new User();
         user.setId(userId);
+        user.setFirstName("User " + userId);
 
         Chat chat = new Chat();
         chat.setId(userId);

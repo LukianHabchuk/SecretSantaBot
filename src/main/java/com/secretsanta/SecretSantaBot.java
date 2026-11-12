@@ -42,7 +42,8 @@ public class SecretSantaBot extends TelegramLongPollingBot {
         this.botToken = botToken;
         this.botUsername = botUsername;
         this.organizerService = organizerService;
-        this.exchangeService = new ExchangeService(organizerService);
+        this.exchangeService =
+                new ExchangeService(organizerService, pendingDrawStore.exchangeStore());
         this.telegramMessenger = new TelegramMessenger() {
             @Override
             public void sendMessage(
@@ -70,7 +71,8 @@ public class SecretSantaBot extends TelegramLongPollingBot {
         this.botToken = botToken;
         this.botUsername = botUsername;
         this.organizerService = organizerService;
-        this.exchangeService = new ExchangeService(organizerService);
+        this.exchangeService =
+                new ExchangeService(organizerService, pendingDrawStore.exchangeStore());
         this.telegramMessenger = Objects.requireNonNull(telegramMessenger);
         this.pendingDrawService = new PendingDrawService(
                 pendingDrawStore, exchangeService, organizerService, telegramMessenger);
@@ -164,11 +166,14 @@ public class SecretSantaBot extends TelegramLongPollingBot {
                     break;
                 }
                 try {
-                    String inviteCode = openRegistration(userId);
+                    String inviteCode = openRegistration(
+                            userId, message.getFrom().getFirstName());
                     sendText(chatId, "✅ Реєстрацію відкрито.\nЗапрошувальний код: " + inviteCode);
                 } catch (PendingDrawService.PendingDrawInProgressException exception) {
                     sendText(chatId,
                             "❌ Є незавершений розподіл. Повтори `/run`; нову реєстрацію відкрити не можна.");
+                } catch (IllegalArgumentException exception) {
+                    sendText(chatId, "❌ Не вдалося використати ім'я з профілю Telegram.");
                 } catch (SecurityException exception) {
                     sendText(chatId, "❌ Лише організатор може відкрити реєстрацію.");
                 } catch (IOException exception) {
@@ -187,8 +192,15 @@ public class SecretSantaBot extends TelegramLongPollingBot {
                     sendText(chatId, "❌ Використання: `/join <код> <ім'я>`.");
                     break;
                 }
-                ExchangeService.RegistrationResult registrationResult =
-                        exchangeService.register(userId, joinArguments[0], joinArguments[1]);
+                ExchangeService.RegistrationResult registrationResult;
+                try {
+                    registrationResult =
+                            exchangeService.register(userId, joinArguments[0], joinArguments[1]);
+                } catch (IOException exception) {
+                    logger.log(Level.SEVERE, "Could not persist participant registration.", exception);
+                    sendText(chatId, "❌ Не вдалося зберегти реєстрацію. Спробуй пізніше.");
+                    break;
+                }
                 switch (registrationResult) {
                     case REGISTERED:
                         sendText(chatId, "✅ Ти приєднався до обміну.");
@@ -290,8 +302,9 @@ public class SecretSantaBot extends TelegramLongPollingBot {
         return false;
     }
 
-    private synchronized String openRegistration(long organizerId) throws IOException {
-        String inviteCode = pendingDrawService.openRegistration(organizerId);
+    private synchronized String openRegistration(long organizerId, String organizerName)
+            throws IOException {
+        String inviteCode = pendingDrawService.openRegistration(organizerId, organizerName);
         pendingPairParticipantId = null;
         activePairingSessionToken = null;
         return inviteCode;
@@ -423,6 +436,10 @@ public class SecretSantaBot extends TelegramLongPollingBot {
         } catch (IllegalArgumentException exception) {
             sendText(userId, "❌ Список змінився. Почни вибір заново командою `/pair`.");
             answerCallback(callback.getId(), "Не вдалося створити пару.");
+        } catch (IOException exception) {
+            logger.log(Level.SEVERE, "Could not persist participant pairing.", exception);
+            sendText(userId, "❌ Не вдалося зберегти пару. Спробуй пізніше.");
+            answerCallback(callback.getId(), "Не вдалося зберегти пару.");
         }
     }
 

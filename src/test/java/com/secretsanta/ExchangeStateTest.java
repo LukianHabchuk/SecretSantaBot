@@ -1,6 +1,7 @@
 package com.secretsanta;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -19,6 +20,23 @@ class ExchangeStateTest {
         assertTrue(state.assignments().isEmpty());
         assertTrue(state.deliveredUserIds().isEmpty());
         assertTrue(state.confirmedUserIds().isEmpty());
+    }
+
+    @Test
+    void closedRegistrationRetainsTheRosterWithoutInviteOrDrawData() {
+        ExchangeState state = new ExchangeState(
+                ExchangeState.Phase.REGISTRATION_CLOSED,
+                null,
+                List.of(new ExchangeState.Participant(101L, "Organizer", null)),
+                List.of(),
+                0,
+                List.of(),
+                Set.of(),
+                Set.of());
+
+        assertEquals(ExchangeState.Phase.REGISTRATION_CLOSED, state.phase());
+        assertEquals(1, state.participants().size());
+        assertNull(state.inviteCode());
     }
 
     @Test

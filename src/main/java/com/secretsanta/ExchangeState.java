@@ -24,7 +24,8 @@ record ExchangeState(
         EMPTY,
         REGISTRATION_OPEN,
         DELIVERING,
-        AWAITING_CONFIRMATIONS
+        AWAITING_CONFIRMATIONS,
+        REGISTRATION_CLOSED
     }
 
     record Participant(long userId, String name, Long partnerId) {
@@ -196,6 +197,18 @@ record ExchangeState(
                     || !deliveredUserIds.isEmpty()
                     || !confirmedUserIds.isEmpty()) {
                 throw new IllegalArgumentException("Open registration state is invalid.");
+            }
+            return;
+        }
+
+        if (phase == Phase.REGISTRATION_CLOSED) {
+            if (inviteCode != null
+                    || !pairRequests.isEmpty()
+                    || drawGeneration != 0
+                    || !assignments.isEmpty()
+                    || !deliveredUserIds.isEmpty()
+                    || !confirmedUserIds.isEmpty()) {
+                throw new IllegalArgumentException("Closed registration state is invalid.");
             }
             return;
         }
