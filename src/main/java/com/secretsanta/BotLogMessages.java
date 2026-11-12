@@ -21,6 +21,12 @@ final class BotLogMessages {
     static final String TELEGRAM_CALLBACK_ANSWER_FAILED = "Failed to answer Telegram callback.";
     static final String DATA_DIRECTORY_LOCK_FAILED =
             "Could not lock the Secret Santa data directory.";
+    static final String USER_HOME_UNAVAILABLE =
+            "The user home directory is not configured.";
+    static final String INSTANCE_LOCK_UNAVAILABLE =
+            "Another bot may already be using this data directory.";
+    static final String BOT_STARTED =
+            "🤖 Бот Таємного Санти успішно запущений і слухає повідомлення!";
 
     private BotLogMessages() {}
 }

@@ -68,7 +68,6 @@ final class BotMessages {
             "Список змінився. Обери партнера з останнього повідомлення.";
     static final String PARTICIPANTS_CHANGED = "Список учасників змінився. Почни з `/pair`.";
     static final String INVALID_PARTICIPANT_SELECTION = "Некоректний вибір учасника.";
-    static final String RESTART_PAIRING = "Почни вибір заново командою `/pair`.";
     static final String SECOND_PARTICIPANT_PROMPT = "Обери другого учасника.";
     static final String PAIR_UNCHANGED = "ℹ️ Ці учасники вже є парою.";
     static final String PAIR_UNCHANGED_CALLBACK = "Пара не змінилася.";
@@ -76,6 +75,54 @@ final class BotMessages {
     static final String PAIRING_FAILED_CALLBACK = "Не вдалося створити пару.";
     static final String PAIR_PERSIST_FAILED = "❌ Не вдалося зберегти пару. Спробуй пізніше.";
     static final String PAIR_PERSIST_FAILED_CALLBACK = "Не вдалося зберегти пару.";
+    static final String COMMAND_PRIVATE_ONLY = "❌ Команду можна виконати лише в особистому чаті.";
+    static final String CLAIM_USAGE = "❌ Вкажи код налаштування: `/claim <код>`.";
+    static final String CLAIM_SUCCESS = "✅ Тепер ти організатор.";
+    static final String CLAIM_COMMAND_FAILED =
+            "❌ Не вдалося отримати права організатора. Перевір код або звернись до власника.";
+    static final String OPEN_USAGE = "❌ Використання: `/open`.";
+    static final String OPEN_PENDING_DRAW =
+            "❌ Є незавершений розподіл. Повтори `/run`; нову реєстрацію відкрити не можна.";
+    static final String OPEN_ORGANIZER_ONLY = "❌ Лише організатор може відкрити реєстрацію.";
+    static final String JOIN_PRIVATE_ONLY = "❌ Приєднатися можна лише в особистому чаті.";
+    static final String JOIN_USAGE = "❌ Використання: `/join <код> <ім'я>`.";
+    static final String JOIN_NAME_RULES =
+            "❌ Ім'я має містити від 1 до 64 символів без керівних символів.";
+    static final String REGISTER_HELP =
+            "ℹ️ Щоб приєднатися, скористайся `/join <код> <ім'я>`.";
+    static final String EMPTY_ROSTER = "Поки що ніхто не зареєструвався.";
+    static final String ROSTER_HEADER = "📋 **Список учасників:**\n";
+    static final String NO_COMMAND = "Невідома команда. Напиши /start для інструкції.";
+    static final String ORGANIZER_COMMAND_PRIVATE_ONLY =
+            "❌ Команду організатора можна виконати лише в особистому чаті.";
+    static final String ORGANIZER_COMMAND_ONLY = "❌ Ця команда доступна лише організатору.";
+    static final String ORGANIZER_CHECK_COMMAND_FAILED =
+            "❌ Не вдалося перевірити права організатора. Спробуй пізніше.";
+    static final String PAIR_USAGE = "❌ Використання: `/pair`.";
+    static final String PAIR_PENDING_DRAW =
+            "❌ Поки розподіл не завершено, змінювати пари не можна.";
+    static final String PAIR_PENDING_DRAW_CHECK_FAILED =
+            "❌ Не вдалося перевірити стан розподілу. Спробуй пізніше.";
+    static final String RUN_TOO_FEW = "❌ Замало учасників для розподілу (потрібно мінімум 2).";
+    static final String RUN_COMPLETED =
+            "✅ Розподіл успішно завершено! Усі учасники отримали свої цілі в особисті чати.";
+    static final String RUN_NO_ASSIGNMENT =
+            "❌ Не вдалося знайти комбінацію. Перевір пари: для цієї групи немає допустимого розподілу.";
+    static final String RUN_FAILED =
+            "❌ Не вдалося безпечно продовжити розподіл. Не відкривай нову реєстрацію; "
+                    + "повтори `/run`, щоб відновити поточний розподіл.";
+    static final String MENU_LOAD_FAILED = "❌ Не вдалося завантажити меню. Спробуй пізніше.";
+    static final String TOO_FEW_FOR_PAIRING =
+            "❌ Для створення пари потрібно щонайменше двоє учасників.";
+    static final String FIRST_PARTICIPANT_PROMPT = "Обери першого учасника:";
+    static final String CHAT_NAME_INPUT = "Введи ім'я в чаті.";
+    static final String FALLBACK_PARTICIPANT_NAME = "Учасник";
+    static final String PAIR_CREATED_PREFIX = "✅ Створено пару: **";
+    static final String PAIR_CREATED_MIDDLE = "** та **";
+    static final String PAIR_CREATED_SUFFIX = "**.";
+    static final String REPLACED_PAIRS_PREFIX = "\nПопередні пари видалено: ";
+    static final String REPLACED_PAIRS_SUFFIX =
+            ". Звільнені учасники більше не мають пари.";
 
     private BotMessages() {}
 
@@ -97,5 +144,32 @@ final class BotMessages {
 
     static String partnerSelection(String escapedName) {
         return "Обери партнера для " + escapedName + ":";
+    }
+
+    static String openPendingDeliveries(int count) {
+        return "⚠️ Не вдалося доставити результати " + count
+                + " учасникам. Розподіл збережено; повтори `/run`, "
+                + "щоб повторити доставку без нового жеребкування.";
+    }
+
+    static String participantRosterRow(String escapedName, String escapedPartnerName) {
+        return "• " + escapedName
+                + (escapedPartnerName == null ? "" : " (пара: `" + escapedPartnerName + "`)")
+                + "\n";
+    }
+
+    static String pairingChange(String escapedFirstName, String escapedSecondName,
+            java.util.List<String> escapedReplacedPairs) {
+        StringBuilder message = new StringBuilder(PAIR_CREATED_PREFIX)
+                .append(escapedFirstName)
+                .append(PAIR_CREATED_MIDDLE)
+                .append(escapedSecondName)
+                .append(PAIR_CREATED_SUFFIX);
+        if (!escapedReplacedPairs.isEmpty()) {
+            message.append(REPLACED_PAIRS_PREFIX)
+                    .append(String.join("; ", escapedReplacedPairs))
+                    .append(REPLACED_PAIRS_SUFFIX);
+        }
+        return message.toString();
     }
 }

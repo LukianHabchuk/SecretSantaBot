@@ -74,7 +74,7 @@ final class BotButtonController {
                             : BotButtons.participantStartMenu());
         } catch (IOException exception) {
             LOGGER.log(Level.SEVERE, BotLogMessages.ONBOARDING_STATE_READ_FAILED, exception);
-            responder.sendText(chatId, "❌ Не вдалося завантажити меню. Спробуй пізніше.");
+            responder.sendText(chatId, BotMessages.MENU_LOAD_FAILED);
         }
     }
 
@@ -102,15 +102,14 @@ final class BotButtonController {
         List<SecretSantaBot.Participant> roster = exchangeService.participants();
         if (roster.size() < 2) {
             cancelPairing();
-            responder.sendText(
-                    organizerId, "❌ Для створення пари потрібно щонайменше двоє учасників.");
+            responder.sendText(organizerId, BotMessages.TOO_FEW_FOR_PAIRING);
             return;
         }
         pendingPairParticipantId = null;
         activePairingSessionToken = newToken();
         responder.sendWithKeyboard(
                 organizerId,
-                "Обери першого учасника:",
+                BotMessages.FIRST_PARTICIPANT_PROMPT,
                 BotButtons.pairing(
                         roster,
                         BotButtons.PAIR_PREFIX + "first:" + activePairingSessionToken + ":",
@@ -194,7 +193,7 @@ final class BotButtonController {
         }
         String firstName = context.firstName();
         String suggestedName = firstName == null || firstName.isBlank()
-                ? "Учасник"
+                ? BotMessages.FALLBACK_PARTICIPANT_NAME
                 : firstName.strip();
         showJoinConfirmation(userId, new PendingJoin(inviteCode, suggestedName, newToken()));
     }
@@ -302,7 +301,7 @@ final class BotButtonController {
         }
         pendingInputs.put(userId, PendingInput.JOIN_NAME);
         responder.sendText(userId, BotMessages.JOIN_NAME_PROMPT);
-        responder.answerCallback(callbackId, "Введи ім'я в чаті.");
+        responder.answerCallback(callbackId, BotMessages.CHAT_NAME_INPUT);
     }
 
     private void openRegistrationFromButton(CallbackQuery callback) {
@@ -493,11 +492,6 @@ final class BotButtonController {
     }
 
     private static String pairingChangeMessage(ExchangeService.PairingChange change) {
-        StringBuilder message = new StringBuilder("✅ Створено пару: **")
-                .append(BotMessages.escapeMarkdown(change.first().name()))
-                .append("** та **")
-                .append(BotMessages.escapeMarkdown(change.second().name()))
-                .append("**.");
         List<String> replacedPairs = new ArrayList<>();
         if (change.formerPartnerOfFirst() != null) {
             replacedPairs.add(
@@ -509,12 +503,10 @@ final class BotButtonController {
                     BotMessages.escapeMarkdown(change.second().name()) + " + "
                             + BotMessages.escapeMarkdown(change.formerPartnerOfSecond().name()));
         }
-        if (!replacedPairs.isEmpty()) {
-            message.append("\nПопередні пари видалено: ")
-                    .append(String.join("; ", replacedPairs))
-                    .append(". Звільнені учасники більше не мають пари.");
-        }
-        return message.toString();
+        return BotMessages.pairingChange(
+                BotMessages.escapeMarkdown(change.first().name()),
+                BotMessages.escapeMarkdown(change.second().name()),
+                replacedPairs);
     }
 
     private boolean isRegistrationOpen() {
