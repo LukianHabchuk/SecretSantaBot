@@ -16,6 +16,15 @@ final class BotButtons {
     static final String RESET_CONFIRM_PREFIX = RESET + ":confirm:";
     static final String RESET_CANCEL_PREFIX = RESET + ":cancel:";
     static final String PAIR_PREFIX = "pair:";
+    static final String PAIR_REQUEST_PREFIX = "pair-request:";
+    static final String PAIR_REQUEST_CHOOSE = PAIR_REQUEST_PREFIX + "choose";
+    static final String PAIR_REQUEST_STATUS = PAIR_REQUEST_PREFIX + "status";
+    static final String PAIR_REQUEST_TARGET_PREFIX = PAIR_REQUEST_PREFIX + "target:";
+    static final String PAIR_REQUEST_ACCEPT_PREFIX = PAIR_REQUEST_PREFIX + "accept:";
+    static final String PAIR_REQUEST_DECLINE_PREFIX = PAIR_REQUEST_PREFIX + "decline:";
+    static final String PAIR_REQUEST_CANCEL_PREFIX = PAIR_REQUEST_PREFIX + "cancel:";
+    static final String ORGANIZER_PAIR = "organizer:pair";
+    static final String ORGANIZER_ROSTER = "organizer:roster";
 
     private BotButtons() {}
 
@@ -25,11 +34,23 @@ final class BotButtons {
                 List.of(button("Приєднатися за кодом", JOIN))));
     }
 
-    static InlineKeyboardMarkup organizerMenu(boolean registrationOpen) {
+    static InlineKeyboardMarkup participantPairMenu() {
+        return keyboard(List.of(
+                List.of(button("Запросити пару", PAIR_REQUEST_CHOOSE)),
+                List.of(button("Мій запит", PAIR_REQUEST_STATUS))));
+    }
+
+    static InlineKeyboardMarkup organizerMenu(
+            boolean registrationOpen, boolean registeredParticipant) {
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
         rows.add(List.of(button("Відкрити реєстрацію", OPEN)));
         if (registrationOpen) {
             rows.add(List.of(button("Скинути обмін", RESET)));
+            rows.add(List.of(button("Керувати парами", ORGANIZER_PAIR)));
+            rows.add(List.of(button("Список учасників", ORGANIZER_ROSTER)));
+            if (registeredParticipant) {
+                rows.addAll(participantPairMenu().getKeyboard());
+            }
         }
         return keyboard(rows);
     }
@@ -44,6 +65,17 @@ final class BotButtons {
         return keyboard(List.of(
                 List.of(button("Так, скинути", RESET_CONFIRM_PREFIX + token)),
                 List.of(button("Скасувати", RESET_CANCEL_PREFIX + token))));
+    }
+
+    static InlineKeyboardMarkup pairRequestResponse(String acceptToken, String declineToken) {
+        return keyboard(List.of(
+                List.of(button("Підтвердити пару", PAIR_REQUEST_ACCEPT_PREFIX + acceptToken)),
+                List.of(button("Відхилити", PAIR_REQUEST_DECLINE_PREFIX + declineToken))));
+    }
+
+    static InlineKeyboardMarkup pairRequestCancellation(String token) {
+        return keyboard(List.of(List.of(
+                button("Скасувати запит", PAIR_REQUEST_CANCEL_PREFIX + token))));
     }
 
     static InlineKeyboardMarkup pairing(

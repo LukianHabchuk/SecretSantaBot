@@ -1,5 +1,9 @@
 package com.secretsanta;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 final class BotMessages {
     static final String PRIVATE_START_ONLY =
             "Відкрий бота в особистому чаті, щоб приєднатися або створити обмін.";
@@ -75,6 +79,27 @@ final class BotMessages {
     static final String PAIRING_FAILED_CALLBACK = "Не вдалося створити пару.";
     static final String PAIR_PERSIST_FAILED = "❌ Не вдалося зберегти пару. Спробуй пізніше.";
     static final String PAIR_PERSIST_FAILED_CALLBACK = "Не вдалося зберегти пару.";
+    static final String PAIR_REQUEST_CLOSED = "❌ Запити на пару доступні лише під час реєстрації.";
+    static final String PAIR_REQUEST_NOT_REGISTERED =
+            "❌ Спочатку приєднайся до обміну, щоб надіслати запит на пару.";
+    static final String PAIR_REQUEST_ALREADY_PAIRED = "ℹ️ У тебе вже є пара.";
+    static final String PAIR_REQUEST_NO_CANDIDATES =
+            "Наразі немає вільних учасників, яким можна надіслати запит.";
+    static final String PAIR_REQUEST_CHOOSE_PROMPT = "Обери учасника, якому хочеш надіслати запит:";
+    static final String PAIR_REQUEST_SENT_CALLBACK = "Запит на пару надіслано.";
+    static final String PAIR_REQUEST_RECEIVED_CALLBACK = "Запит на пару.";
+    static final String PAIR_REQUEST_STALE = "Цей запит більше неактивний.";
+    static final String PAIR_REQUEST_FAILED = "❌ Не вдалося зберегти запит на пару.";
+    static final String PAIR_REQUEST_ACCEPTED_CALLBACK = "Пару підтверджено.";
+    static final String PAIR_REQUEST_ACCEPTED = "✅ Пару підтверджено: ";
+    static final String PAIR_REQUEST_DECLINED_CALLBACK = "Запит відхилено.";
+    static final String PAIR_REQUEST_DECLINED = "Запит на пару відхилено.";
+    static final String PAIR_REQUEST_CANCELED_CALLBACK = "Запит скасовано.";
+    static final String PAIR_REQUEST_CANCELED = "Запит на пару скасовано.";
+    static final String PAIR_REQUEST_NONE = "Немає відкритого запиту на пару.";
+    static final String PAIR_STATUS_CALLBACK = "Статус пари оновлено.";
+    static final String PAIR_CHANGED_UNPAIRED =
+            "Організатор змінив пари. Наразі ти без пари.";
     static final String COMMAND_PRIVATE_ONLY = "❌ Команду можна виконати лише в особистому чаті.";
     static final String CLAIM_USAGE = "❌ Вкажи код налаштування: `/claim <код>`.";
     static final String CLAIM_SUCCESS = "✅ Тепер ти організатор.";
@@ -152,10 +177,70 @@ final class BotMessages {
                 + "щоб повторити доставку без нового жеребкування.";
     }
 
-    static String participantRosterRow(String escapedName, String escapedPartnerName) {
-        return "• " + escapedName
-                + (escapedPartnerName == null ? "" : " (пара: `" + escapedPartnerName + "`)")
-                + "\n";
+    static String pairRequestReceived(String escapedRequesterName) {
+        return "Тобі надійшов запит на пару від **" + escapedRequesterName + "**.";
+    }
+
+    static String pairRequestStatus(String escapedOtherName, boolean outgoing) {
+        return (outgoing ? "Твій запит очікує на відповідь від **"
+                : "Запит від **") + escapedOtherName + "** очікує на твою відповідь.";
+    }
+
+    static String pairAccepted(String escapedPartnerName) {
+        return PAIR_REQUEST_ACCEPTED + "**" + escapedPartnerName + "**.";
+    }
+
+    static String pairStatusPaired(String escapedPartnerName) {
+        return "Твоя пара: **" + escapedPartnerName + "**.";
+    }
+
+    static String pairChanged(String escapedPartnerName) {
+        return "Організатор змінив пари. Твоя поточна пара: **"
+                + escapedPartnerName + "**.";
+    }
+
+    static String participantRoster(
+            List<SecretSantaBot.Participant> participants,
+            List<ExchangeState.PairRequest> pairRequests) {
+        Map<Long, SecretSantaBot.Participant> participantsById = new HashMap<>();
+        participants.forEach(participant ->
+                participantsById.put(participant.chatId(), participant));
+        Map<Long, ExchangeState.PairRequest> requestsByParticipant = new HashMap<>();
+        pairRequests.forEach(request -> {
+            requestsByParticipant.put(request.requesterId(), request);
+            requestsByParticipant.put(request.requestedPartnerId(), request);
+        });
+
+        StringBuilder message = new StringBuilder(ROSTER_HEADER);
+        participants.forEach(participant -> {
+            String status;
+            if (participant.partnerId() != null) {
+                status = "пара: `" + escapeMarkdown(
+                        participantsById.get(participant.partnerId()).name()) + "`";
+            } else {
+                ExchangeState.PairRequest request =
+                        requestsByParticipant.get(participant.chatId());
+                if (request == null) {
+                    status = "без пари";
+                } else {
+                    long otherId = request.requesterId() == participant.chatId()
+                            ? request.requestedPartnerId()
+                            : request.requesterId();
+                    String direction = request.requesterId() == participant.chatId()
+                            ? "запит до "
+                            : "запит від ";
+                    status = direction + "`"
+                            + escapeMarkdown(participantsById.get(otherId).name()) + "`";
+                }
+            }
+            message.append(participantRosterRow(
+                    escapeMarkdown(participant.name()), status));
+        });
+        return message.toString();
+    }
+
+    static String participantRosterRow(String escapedName, String status) {
+        return "• " + escapedName + " (" + status + ")\n";
     }
 
     static String pairingChange(String escapedFirstName, String escapedSecondName,

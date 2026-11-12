@@ -142,10 +142,15 @@ for a draw. Organizer commands such as `/list`, `/pair`, and `/run` remain
 available in private chat while their button-based flows are added.
 
 The legacy `/join <invite code> <display name>` command remains available.
-Pairing and drawing are still organizer commands: `/pair` selects one
-participant and then their partner using inline buttons. Re-pairing either
-person removes their previous pair; any former partners are left unpaired and
-the organizer is told which pairs changed.
+During registration, participants can use **Запросити пару** to privately ask
+another unpaired participant to pair. The recipient can accept or decline, and
+the requester can cancel; an unresolved request blocks registration closure and
+the draw. The **Мій запит** button shows the current request or confirmed pair.
+The organizer can review the roster and pending requests with **Учасники**, or
+use **Змінити пари** (also available through `/pair`) to create or replace
+pairs. Re-pairing either person removes their previous pair, leaves former
+partners unpaired, and privately notifies everyone affected. The organizer's
+roster view shows pair/request status only, never assignment recipients.
 
 The organizer starts the draw with `/run`. The bot saves the complete encrypted
 draw before sending any assignments. If any private delivery fails, the

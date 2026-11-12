@@ -1,7 +1,6 @@
 package com.secretsanta;
 
 import java.io.IOException;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -149,15 +148,9 @@ final class BotCommandController {
             return;
         }
 
-        Map<Long, String> namesById = new HashMap<>();
-        roster.forEach(participant -> namesById.put(participant.chatId(), participant.name()));
-        StringBuilder message = new StringBuilder(BotMessages.ROSTER_HEADER);
-        roster.forEach(participant -> message.append(BotMessages.participantRosterRow(
-                BotMessages.escapeMarkdown(participant.name()),
-                participant.partnerId() == null
-                        ? null
-                        : BotMessages.escapeMarkdown(namesById.get(participant.partnerId())))));
-        responder.sendText(command.chatId(), message.toString());
+        responder.sendText(
+                command.chatId(),
+                BotMessages.participantRoster(roster, exchangeService.state().pairRequests()));
     }
 
     private void runDraw(Command command) {

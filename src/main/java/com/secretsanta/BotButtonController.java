@@ -28,6 +28,8 @@ final class BotButtonController {
     private final Map<Long, PendingJoin> pendingJoins = new HashMap<>();
     private final Map<Long, String> pendingResetTokens = new HashMap<>();
     private final Map<String, Consumer<CallbackQuery>> onboardingActions;
+    private final Map<String, Consumer<CallbackQuery>> organizerPairActions;
+    private final BotParticipantPairController participantPairController;
     private final Map<ExchangeService.RegistrationResult, Consumer<JoinAttempt>>
             registrationActions;
     private final EnumMap<PendingInput, BiConsumer<InputContext, String>> inputHandlers =
@@ -44,11 +46,16 @@ final class BotButtonController {
         this.exchangeService = exchangeService;
         this.pendingDrawService = pendingDrawService;
         this.responder = responder;
+        participantPairController =
+                new BotParticipantPairController(exchangeService, responder);
         onboardingActions = Map.of(
                 BotButtons.CLAIM, this::requestOrganizerClaim,
                 BotButtons.JOIN, this::requestJoin,
                 BotButtons.OPEN, this::openRegistrationFromButton,
                 BotButtons.RESET, this::requestResetConfirmation);
+        organizerPairActions = Map.of(
+                BotButtons.ORGANIZER_PAIR, this::startPairingFromButton,
+                BotButtons.ORGANIZER_ROSTER, this::showOrganizerRoster);
         registrationActions = Map.of(
                 ExchangeService.RegistrationResult.REGISTERED,
                 attempt -> finishJoinAttempt(
@@ -100,12 +107,16 @@ final class BotButtonController {
         pendingResetTokens.remove(userId);
         try {
             boolean organizer = organizerService.isOrganizer(userId);
+            boolean registeredParticipant = exchangeService.participant(userId).isPresent();
+            boolean registrationOpen = isRegistrationOpen();
             responder.sendWithKeyboard(
                     chatId,
                     organizer ? BotMessages.ORGANIZER_START : BotMessages.PARTICIPANT_START,
                     organizer
-                            ? BotButtons.organizerMenu(isRegistrationOpen())
-                            : BotButtons.participantStartMenu());
+                            ? BotButtons.organizerMenu(registrationOpen, registeredParticipant)
+                            : registrationOpen && registeredParticipant
+                                    ? BotButtons.participantPairMenu()
+                                    : BotButtons.participantStartMenu());
         } catch (IOException exception) {
             LOGGER.log(Level.SEVERE, BotLogMessages.ONBOARDING_STATE_READ_FAILED, exception);
             responder.sendText(chatId, BotMessages.MENU_LOAD_FAILED);
@@ -132,12 +143,12 @@ final class BotButtonController {
         activePairingSessionToken = null;
     }
 
-    synchronized void startPairing(long organizerId) {
+    synchronized boolean startPairing(long organizerId) {
         List<SecretSantaBot.Participant> roster = exchangeService.participants();
         if (roster.size() < 2) {
             cancelPairing();
             responder.sendText(organizerId, BotMessages.TOO_FEW_FOR_PAIRING);
-            return;
+            return false;
         }
         pendingPairParticipantId = null;
         activePairingSessionToken = newToken();
@@ -148,6 +159,7 @@ final class BotButtonController {
                         roster,
                         BotButtons.PAIR_PREFIX + "first:" + activePairingSessionToken + ":",
                         null));
+        return true;
     }
 
     synchronized void handleCallbackQuery(CallbackQuery callback) {
@@ -170,7 +182,17 @@ final class BotButtonController {
             handleOnboardingCallback(callback);
             return;
         }
+        if (data != null && data.startsWith(BotButtons.PAIR_REQUEST_PREFIX)) {
+            participantPairController.handleCallbackQuery(callback);
+            return;
+        }
         if (!isOrganizerForCallback(userId, callback.getId())) {
+            return;
+        }
+        Consumer<CallbackQuery> organizerPairAction =
+                data == null ? null : organizerPairActions.get(data);
+        if (organizerPairAction != null) {
+            organizerPairAction.accept(callback);
             return;
         }
         if (data != null && data.startsWith(BotButtons.PAIR_PREFIX)) {
@@ -185,6 +207,40 @@ final class BotButtonController {
         pendingInputs.put(userId, PendingInput.SETUP_CODE);
         responder.sendText(userId, BotMessages.SETUP_CODE_PROMPT);
         responder.answerCallback(callback.getId(), BotMessages.PRIVATE_INPUT_CALLBACK);
+    }
+
+    private void startPairingFromButton(CallbackQuery callback) {
+        long userId = callback.getFrom().getId();
+        try {
+            if (pendingDrawService.hasPendingDraw()) {
+                responder.answerCallback(callback.getId(), BotMessages.PAIR_PENDING_DRAW);
+                responder.sendText(userId, BotMessages.PAIR_PENDING_DRAW);
+                return;
+            }
+            boolean started = startPairing(userId);
+            responder.answerCallback(
+                    callback.getId(),
+                    started
+                            ? BotMessages.FIRST_PARTICIPANT_PROMPT
+                            : BotMessages.TOO_FEW_FOR_PAIRING);
+        } catch (IOException exception) {
+            LOGGER.log(Level.SEVERE, BotLogMessages.PENDING_DRAW_CHECK_FAILED, exception);
+            responder.answerCallback(callback.getId(), BotMessages.PAIR_PENDING_DRAW_CHECK_FAILED);
+            responder.sendText(userId, BotMessages.PAIR_PENDING_DRAW_CHECK_FAILED);
+        }
+    }
+
+    private void showOrganizerRoster(CallbackQuery callback) {
+        long userId = callback.getFrom().getId();
+        List<SecretSantaBot.Participant> participants = exchangeService.participants();
+        responder.sendText(
+                userId,
+                participants.isEmpty()
+                        ? BotMessages.EMPTY_ROSTER
+                        : BotMessages.participantRoster(
+                                participants,
+                                exchangeService.state().pairRequests()));
+        responder.answerCallback(callback.getId(), BotMessages.PAIR_STATUS_CALLBACK);
     }
 
     private void requestJoin(CallbackQuery callback) {
@@ -319,7 +375,7 @@ final class BotButtonController {
             responder.sendWithKeyboard(
                     userId,
                     BotMessages.registrationOpened(inviteCode),
-                    BotButtons.organizerMenu(isRegistrationOpen()));
+                    BotButtons.organizerMenu(isRegistrationOpen(), true));
         } catch (PendingDrawService.PendingDrawInProgressException exception) {
             responder.answerCallback(callback.getId(), BotMessages.PENDING_DRAW_CALLBACK);
             responder.sendText(userId, BotMessages.PENDING_DRAW_RETRY);
@@ -486,6 +542,7 @@ final class BotButtonController {
                 responder.answerCallback(callback.getId(), BotMessages.PAIR_UNCHANGED_CALLBACK);
                 return;
             }
+            notifyPairingChange(change);
             responder.sendText(userId, pairingChangeMessage(change));
             responder.answerCallback(callback.getId(), BotMessages.PAIR_SAVED_CALLBACK);
         } catch (IllegalArgumentException exception) {
@@ -496,6 +553,25 @@ final class BotButtonController {
             responder.sendText(userId, BotMessages.PAIR_PERSIST_FAILED);
             responder.answerCallback(callback.getId(), BotMessages.PAIR_PERSIST_FAILED_CALLBACK);
         }
+    }
+
+    private void notifyPairingChange(ExchangeService.PairingChange change) {
+        Map<Long, String> notifications = new HashMap<>();
+        notifications.put(
+                change.first().chatId(),
+                BotMessages.pairChanged(BotMessages.escapeMarkdown(change.second().name())));
+        notifications.put(
+                change.second().chatId(),
+                BotMessages.pairChanged(BotMessages.escapeMarkdown(change.first().name())));
+        if (change.formerPartnerOfFirst() != null) {
+            notifications.put(
+                    change.formerPartnerOfFirst().chatId(), BotMessages.PAIR_CHANGED_UNPAIRED);
+        }
+        if (change.formerPartnerOfSecond() != null) {
+            notifications.put(
+                    change.formerPartnerOfSecond().chatId(), BotMessages.PAIR_CHANGED_UNPAIRED);
+        }
+        notifications.forEach(responder::sendText);
     }
 
     private static String pairingChangeMessage(ExchangeService.PairingChange change) {
@@ -537,4 +613,5 @@ final class BotButtonController {
     private record InputContext(long userId, String firstName) {}
 
     private record JoinAttempt(long userId, String callbackId) {}
+
 }

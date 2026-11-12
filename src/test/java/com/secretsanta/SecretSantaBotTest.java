@@ -2,6 +2,7 @@ package com.secretsanta;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
@@ -564,6 +565,220 @@ class SecretSantaBotTest {
 
         assertTrue(messenger.sentMessages.getLast().keyboard() == null);
         assertTrue(messenger.sentMessages.getLast().text().contains("особистому чаті"));
+    }
+
+    @Test
+    void participantsCanRequestAndAcceptPairingInPrivateChats() throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+        String inviteCode = openRegistration(bot, messenger);
+        bot.onUpdateReceived(update(201L, 201L, "private", "/join " + inviteCode + " Alex"));
+        bot.onUpdateReceived(update(202L, 202L, "private", "/join " + inviteCode + " Sam"));
+
+        bot.onUpdateReceived(update(201L, 201L, "private", "/start"));
+        String requestButton = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Запросити пару");
+        bot.onUpdateReceived(callbackUpdate(requestButton, 201L, 201L, "choose"));
+        String candidate = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Sam");
+        bot.onUpdateReceived(callbackUpdate(candidate, 201L, 201L, "request"));
+
+        ExchangeService exchangeService = new ExchangeService(
+                organizerService, new ExchangeStore(dataDirectory, TEST_DATA_KEY));
+        assertEquals(
+                List.of(new ExchangeState.PairRequest(201L, 202L)),
+                exchangeService.state().pairRequests());
+        bot.onUpdateReceived(update(100L, 100L, "private", "/list"));
+        assertTrue(messenger.sentMessages.getLast().text().contains("запит до"));
+        assertTrue(messenger.sentMessages.getLast().text().contains("запит від"));
+        SentMessage recipientNotice = messenger.sentMessages.stream()
+                .filter(message -> message.chatId() == 202L)
+                .reduce((first, second) -> second)
+                .orElseThrow();
+        SentMessage requesterNotice = messenger.sentMessages.stream()
+                .filter(message -> message.chatId() == 201L)
+                .reduce((first, second) -> second)
+                .orElseThrow();
+        String accept = callbackDataFor(recipientNotice.keyboard(), "Підтвердити пару");
+        String cancel = callbackDataFor(requesterNotice.keyboard(), "Скасувати запит");
+
+        int sentCount = messenger.sentMessages.size();
+        bot.onUpdateReceived(callbackUpdate(accept, 203L, 203L, "unauthorized"));
+        assertEquals(sentCount, messenger.sentMessages.size());
+        assertTrue(exchangeService.state().pairRequests().size() == 1);
+
+        bot.onUpdateReceived(callbackUpdate(accept, 202L, 202L, "accept"));
+
+        ExchangeService acceptedExchangeService = new ExchangeService(
+                organizerService, new ExchangeStore(dataDirectory, TEST_DATA_KEY));
+        assertEquals(202L, acceptedExchangeService.participant(201L).orElseThrow().partnerId());
+        assertEquals(201L, acceptedExchangeService.participant(202L).orElseThrow().partnerId());
+        assertTrue(acceptedExchangeService.state().pairRequests().isEmpty());
+        assertTrue(messenger.sentMessages.stream()
+                .filter(message -> message.chatId() == 201L || message.chatId() == 202L)
+                .anyMatch(message -> message.text().contains("Пару підтверджено")));
+        assertTrue(cancel.startsWith("pair-request:cancel:"));
+
+        bot.onUpdateReceived(update(201L, 201L, "private", "/start"));
+        bot.onUpdateReceived(callbackUpdate(
+                callbackDataFor(messenger.sentMessages.getLast().keyboard(), "Мій запит"),
+                201L,
+                201L,
+                "status"));
+        assertTrue(messenger.sentMessages.getLast().text().contains("Твоя пара"));
+    }
+
+    @Test
+    void stalePairRequestButtonsCannotActOnAReplacementRequest() throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+        String inviteCode = openRegistration(bot, messenger);
+        bot.onUpdateReceived(update(201L, 201L, "private", "/join " + inviteCode + " Alex"));
+        bot.onUpdateReceived(update(202L, 202L, "private", "/join " + inviteCode + " Sam"));
+
+        bot.onUpdateReceived(update(201L, 201L, "private", "/start"));
+        bot.onUpdateReceived(callbackUpdate(
+                callbackDataFor(messenger.sentMessages.getLast().keyboard(), "Запросити пару"),
+                201L,
+                201L,
+                "choose-1"));
+        bot.onUpdateReceived(callbackUpdate(
+                callbackDataFor(messenger.sentMessages.getLast().keyboard(), "Sam"),
+                201L,
+                201L,
+                "request-1"));
+        SentMessage firstRecipientNotice = messenger.sentMessages.stream()
+                .filter(message -> message.chatId() == 202L)
+                .reduce((first, second) -> second)
+                .orElseThrow();
+        String staleAccept = callbackDataFor(firstRecipientNotice.keyboard(), "Підтвердити пару");
+        SentMessage requesterNotice = messenger.sentMessages.stream()
+                .filter(message -> message.chatId() == 201L)
+                .reduce((first, second) -> second)
+                .orElseThrow();
+        bot.onUpdateReceived(callbackUpdate(
+                callbackDataFor(requesterNotice.keyboard(), "Скасувати запит"),
+                201L,
+                201L,
+                "cancel"));
+
+        bot.onUpdateReceived(update(201L, 201L, "private", "/start"));
+        bot.onUpdateReceived(callbackUpdate(
+                callbackDataFor(messenger.sentMessages.getLast().keyboard(), "Запросити пару"),
+                201L,
+                201L,
+                "choose-2"));
+        bot.onUpdateReceived(callbackUpdate(
+                callbackDataFor(messenger.sentMessages.getLast().keyboard(), "Sam"),
+                201L,
+                201L,
+                "request-2"));
+        ExchangeService exchangeService = new ExchangeService(
+                organizerService, new ExchangeStore(dataDirectory, TEST_DATA_KEY));
+
+        bot.onUpdateReceived(callbackUpdate(staleAccept, 202L, 202L, "stale-accept"));
+
+        assertNull(exchangeService.participant(201L).orElseThrow().partnerId());
+        assertNull(exchangeService.participant(202L).orElseThrow().partnerId());
+        assertEquals(
+                List.of(new ExchangeState.PairRequest(201L, 202L)),
+                exchangeService.state().pairRequests());
+        assertTrue(messenger.callbackAnswers.getLast().text().contains("неактивна"));
+    }
+
+    @Test
+    void participantCanDeclineOnlyFromTheirPrivateChat() throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+        String inviteCode = openRegistration(bot, messenger);
+        bot.onUpdateReceived(update(201L, 201L, "private", "/join " + inviteCode + " Alex"));
+        bot.onUpdateReceived(update(202L, 202L, "private", "/join " + inviteCode + " Sam"));
+
+        bot.onUpdateReceived(update(201L, 201L, "private", "/start"));
+        bot.onUpdateReceived(callbackUpdate(
+                callbackDataFor(messenger.sentMessages.getLast().keyboard(), "Запросити пару"),
+                201L,
+                201L,
+                "choose"));
+        bot.onUpdateReceived(callbackUpdate(
+                callbackDataFor(messenger.sentMessages.getLast().keyboard(), "Sam"),
+                201L,
+                201L,
+                "request"));
+        SentMessage recipientNotice = messenger.sentMessages.stream()
+                .filter(message -> message.chatId() == 202L)
+                .reduce((first, second) -> second)
+                .orElseThrow();
+        String decline = callbackDataFor(recipientNotice.keyboard(), "Відхилити");
+        ExchangeService exchangeService = new ExchangeService(
+                organizerService, new ExchangeStore(dataDirectory, TEST_DATA_KEY));
+
+        bot.onUpdateReceived(callbackUpdate(decline, 202L, -900L, "group"));
+        assertEquals(1, exchangeService.state().pairRequests().size());
+        assertTrue(messenger.callbackAnswers.getLast().text().contains("особистому чаті"));
+
+        bot.onUpdateReceived(callbackUpdate(decline, 202L, 202L, "decline"));
+        ExchangeService declinedExchangeService = new ExchangeService(
+                organizerService, new ExchangeStore(dataDirectory, TEST_DATA_KEY));
+        assertTrue(declinedExchangeService.state().pairRequests().isEmpty());
+        assertNull(declinedExchangeService.participant(201L).orElseThrow().partnerId());
+        assertNull(declinedExchangeService.participant(202L).orElseThrow().partnerId());
+    }
+
+    @Test
+    void organizerCanOpenPairManagementFromThePrivateMenu() throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+        String inviteCode = openRegistration(bot, messenger);
+        bot.onUpdateReceived(update(201L, 201L, "private", "/join " + inviteCode + " Alex"));
+        bot.onUpdateReceived(update(202L, 202L, "private", "/join " + inviteCode + " Sam"));
+
+        bot.onUpdateReceived(update(100L, 100L, "private", "/start"));
+        String rosterButton = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Список учасників");
+        String managePairs = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Керувати парами");
+        bot.onUpdateReceived(callbackUpdate(rosterButton, 100L, 100L, "roster"));
+        assertEquals(100L, messenger.sentMessages.getLast().chatId());
+        assertTrue(messenger.sentMessages.getLast().text().contains("Alex"));
+        assertTrue(messenger.sentMessages.getLast().text().contains("Sam"));
+
+        bot.onUpdateReceived(callbackUpdate(managePairs, 100L, 100L, "manage"));
+
+        assertTrue(messenger.sentMessages.getLast().text().contains("першого учасника"));
+        assertTrue(messenger.sentMessages.getLast().keyboard().getKeyboard().stream()
+                .flatMap(List::stream)
+                .anyMatch(button -> button.getText().equals("Alex")));
+    }
+
+    @Test
+    void organizerPairChangesPrivatelyNotifyEveryAffectedParticipant() throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+        String inviteCode = openRegistration(bot, messenger);
+        for (long userId = 201L; userId <= 204L; userId++) {
+            bot.onUpdateReceived(update(
+                    userId, userId, "private", "/join " + inviteCode + " Guest " + userId));
+        }
+        pairParticipants(bot, messenger, "Guest 201", "Guest 202");
+        pairParticipants(bot, messenger, "Guest 203", "Guest 204");
+        int firstNotificationIndex = messenger.sentMessages.size();
+
+        pairParticipants(bot, messenger, "Guest 201", "Guest 203");
+
+        List<SentMessage> notifications =
+                messenger.sentMessages.subList(firstNotificationIndex, messenger.sentMessages.size());
+        for (long userId : List.of(201L, 202L, 203L, 204L)) {
+            assertTrue(notifications.stream().anyMatch(message -> message.chatId() == userId));
+        }
+        assertTrue(notifications.stream().allMatch(message ->
+                !message.text().contains("Твоя ціль")
+                        && !message.text().contains("купити подарунок")));
     }
 
     @Test

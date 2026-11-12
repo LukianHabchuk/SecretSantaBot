@@ -1,8 +1,8 @@
 # Implementation Plan: Private Secret Santa Exchange
 
 ## Status
-Approved implementation plan for the revised specification. Task 10 is complete;
-Task 11 is next in the ordered implementation sequence.
+Approved implementation plan for the revised specification. Tasks 10 and 11 are
+complete; Task 12 is next in the ordered implementation sequence.
 
 ## Overview
 Extend the existing Java 27 Telegram bot from transient registration and

@@ -152,17 +152,17 @@ buttons, add organizer roster/request review and direct pairing overrides, and
 notify affected participants privately when the organizer changes a pair.
 
 **Acceptance criteria:**
-- [ ] Participant callbacks are private, authorized against the callback user,
+- [x] Participant callbacks are private, authorized against the callback user,
   and invalidated when the request or exchange state changes.
-- [ ] Organizer can review roster, pair and pending-request status, then create
+- [x] Organizer can review roster, pair and pending-request status, then create
   or replace pairs without exposing assignment recipients.
-- [ ] Affected participants are notified of organizer pairing changes; messages
+- [x] Affected participants are notified of organizer pairing changes; messages
   and logs contain no assignment mapping.
 
 **Verification:**
-- [ ] Bot tests cover request lifecycle buttons, stale callbacks, unauthorized
+- [x] Bot tests cover request lifecycle buttons, stale callbacks, unauthorized
   callbacks, organizer overrides, private notifications, and redaction.
-- [ ] `mvn test` passes.
+- [x] Full Maven suite passes (99 tests); Java 27 Docker build passes.
 
 **Dependencies:** Task 10
 

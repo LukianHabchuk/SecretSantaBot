@@ -15,6 +15,8 @@ final class BotLogMessages {
     static final String ONBOARDING_AUTHORIZATION_CHECK_FAILED =
             "Could not read organizer state for onboarding action.";
     static final String PAIRING_PERSIST_FAILED = "Could not persist participant pairing.";
+    static final String PAIR_REQUEST_PERSIST_FAILED =
+            "Could not persist or resolve participant pair request.";
     static final String DRAW_RESUME_FAILED =
             "Could not safely persist or resume the pending draw.";
     static final String TELEGRAM_RESPONSE_SEND_FAILED = "Failed to send Telegram response.";
