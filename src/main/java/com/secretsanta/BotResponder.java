@@ -28,6 +28,10 @@ final class BotResponder {
                 : languageStore.get(userId).orElse(BotLanguage.UKRAINIAN);
     }
 
+    boolean supportsLocalization() {
+        return languageStore != null;
+    }
+
     void beginCallback(long userId) {
         callbackUserId = userId;
     }

@@ -22,7 +22,7 @@ class OfflineBotSimulatorTest {
 
     @Test
     void startCommandRunsAgainstLocalFakeMessenger() throws Exception {
-        String input = "fail 201\nrecover 201\nas 100 /start\nclick 1\nquit\n";
+        String input = "fail 201\nrecover 201\nas 100 /start\nclick 2\nclick 1\nquit\n";
         ByteArrayOutputStream output = new ByteArrayOutputStream();
 
         OfflineBotSimulator.runSession(
@@ -42,6 +42,51 @@ class OfflineBotSimulatorTest {
     }
 
     @Test
+    void completesMixedLanguageExchangeAndRetainsPreferencesAfterCleanup() throws Exception {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        OfflineBotSimulator.Session session = OfflineBotSimulator.createSession(
+                dataDirectory, KEY, new PrintStream(output, true, StandardCharsets.UTF_8));
+        session.sendAs(100L, "/start");
+        session.clickButton(100L, "Українська");
+        session.clickButton(100L, "Я організатор");
+        session.sendAs(100L, OfflineBotSimulator.DEMO_SETUP_CODE);
+        session.clickButton(100L, "Відкрити реєстрацію");
+        String invite = inviteCode(session.latestMessageContaining(100L, "Запрошувальний код:"));
+
+        session.sendAs(201L, "/start");
+        session.clickButton(201L, "English");
+        session.clickButton(201L, "Join with a code");
+        session.sendAs(201L, invite);
+        session.clickButton(201L, "Edit name");
+        session.sendAs(201L, "Alex");
+        session.clickButton(201L, "Confirm name");
+        join(session, 202L, invite, "Sam");
+        join(session, 203L, invite, "Jamie");
+
+        session.sendAs(201L, "/start");
+        session.clickButton(201L, "Request a partner");
+        session.clickButton(201L, "Sam");
+        session.clickButton(202L, "Підтвердити пару");
+        session.sendAs(100L, "/start");
+        session.clickButton(100L, "Провести жеребкування");
+        assertTrue(session.latestMessageContaining(201L, "Your assignment").contains("Secret Santa"));
+        assertTrue(session.latestMessageContaining(202L, "Твоя ціль").contains("Санти"));
+
+        session.clickButton(201L, "I received my assignment");
+        for (long userId : List.of(100L, 202L, 203L)) {
+            session.clickButton(userId, "Отримав подарункове завдання");
+        }
+        session.sendAs(100L, "/start");
+        session.clickButton(100L, "Очистити обмін");
+        session.clickButton(100L, "Так, видалити обмін");
+        assertEquals(ExchangeState.Phase.EMPTY, exchangeState().phase());
+        assertEquals(BotLanguage.ENGLISH,
+                new LanguageStore(dataDirectory, KEY).get(201L).orElseThrow());
+        session.sendAs(201L, "/forgetlanguage");
+        assertTrue(new LanguageStore(dataDirectory, KEY).get(201L).isEmpty());
+    }
+
+    @Test
     void completesPrivateExchangeWalkthroughIncludingRetryRedrawAndCleanup() throws Exception {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         PrintStream transcript = new PrintStream(output, true, StandardCharsets.UTF_8);
@@ -49,6 +94,7 @@ class OfflineBotSimulatorTest {
                 OfflineBotSimulator.createSession(dataDirectory, KEY, transcript);
 
         session.sendAs(100L, "/start");
+        session.clickButton(100L, "Українська");
         session.clickButton(100L, "Я організатор");
         session.sendAs(100L, OfflineBotSimulator.DEMO_SETUP_CODE);
         session.clickButton(100L, "Відкрити реєстрацію");
@@ -111,6 +157,7 @@ class OfflineBotSimulatorTest {
     private void join(
             OfflineBotSimulator.Session session, long userId, String inviteCode, String name) {
         session.sendAs(userId, "/start");
+        session.clickButton(userId, "Українська");
         session.clickButton(userId, "Приєднатися за кодом");
         session.sendAs(userId, inviteCode);
         session.clickButton(userId, "Змінити ім'я");

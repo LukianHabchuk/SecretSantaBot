@@ -34,6 +34,51 @@ class SecretSantaBotTest {
     Path dataDirectory;
 
     @Test
+    void usersChooseChangeAndDeleteTheirLanguageAcrossRestarts() throws Exception {
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        LanguageStore languages = new LanguageStore(dataDirectory, TEST_DATA_KEY);
+        SecretSantaBot bot = new SecretSantaBot(
+                "test-token", "test-bot", createService(), messenger,
+                testPendingDrawStore(), languages);
+
+        bot.onUpdateReceived(update(201L, 201L, "private", "/start"));
+        assertEquals(BotButtons.LANGUAGE_ENGLISH,
+                callbackDataFor(messenger.sentMessages.getLast().keyboard(), "English"));
+        bot.onUpdateReceived(callbackUpdate(BotButtons.LANGUAGE_ENGLISH, 201L, -100L, "group"));
+        assertTrue(languages.get(201L).isEmpty());
+        bot.onUpdateReceived(callbackUpdate(BotButtons.LANGUAGE_ENGLISH, 201L, 201L, "english"));
+        assertTrue(messenger.sentMessages.getLast().text().contains("Secret Santa"));
+        SetMyCommands englishMenu = messenger.commandMenus.stream()
+                .filter(menu -> menu.getScope() instanceof BotCommandScopeChat scope
+                        && scope.getChatId().equals("201"))
+                .reduce((first, second) -> second).orElseThrow();
+        assertEquals("Open menu", englishMenu.getCommands().getFirst().getDescription());
+        assertTrue(englishMenu.getCommands().stream()
+                .anyMatch(command -> command.getCommand().equals("language")));
+
+        LanguageStore restartedLanguages = new LanguageStore(dataDirectory, TEST_DATA_KEY);
+        SecretSantaBot restarted = new SecretSantaBot(
+                "test-token", "test-bot", createService(), messenger,
+                testPendingDrawStore(), restartedLanguages);
+        restarted.onUpdateReceived(update(201L, 201L, "private", "/start"));
+        assertTrue(messenger.sentMessages.getLast().text().contains("Secret Santa"));
+
+        restarted.onUpdateReceived(update(201L, 201L, "private", "/language"));
+        restarted.onUpdateReceived(callbackUpdate(BotButtons.LANGUAGE_UKRAINIAN, 201L, 201L, "ua"));
+        assertTrue(messenger.sentMessages.getLast().text().contains("Таємний Санта"));
+        SetMyCommands ukrainianMenu = messenger.commandMenus.stream()
+                .filter(menu -> menu.getScope() instanceof BotCommandScopeChat scope
+                        && scope.getChatId().equals("201"))
+                .reduce((first, second) -> second).orElseThrow();
+        assertEquals("Відкрити меню", ukrainianMenu.getCommands().getFirst().getDescription());
+        restarted.onUpdateReceived(update(201L, 201L, "private", "/forgetlanguage"));
+        assertTrue(restartedLanguages.get(201L).isEmpty());
+        restarted.onUpdateReceived(update(201L, 201L, "private", "/start"));
+        assertEquals(BotButtons.LANGUAGE_ENGLISH,
+                callbackDataFor(messenger.sentMessages.getLast().keyboard(), "English"));
+    }
+
+    @Test
     void pairNotificationsUseEachRecipientsSavedLanguage() throws Exception {
         LanguageStore languages = new LanguageStore(dataDirectory, TEST_DATA_KEY);
         languages.set(201L, BotLanguage.ENGLISH);

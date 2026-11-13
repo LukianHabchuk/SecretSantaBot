@@ -13,6 +13,7 @@ import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -26,43 +27,15 @@ public class SecretSantaBot extends TelegramLongPollingBot {
     private final BotCommandController commandController;
     private final BotCommandMenu commandMenu;
     private final BotResponder responder;
+    private final LanguageSelection languageSelection;
 
     SecretSantaBot(
             String botToken,
             String botUsername,
             OrganizerService organizerService,
             PendingDrawStore pendingDrawStore) {
-        super(botToken);
-        this.botUsername = botUsername;
-        ExchangeService exchangeService =
-                new ExchangeService(organizerService, pendingDrawStore.exchangeStore());
-        TelegramMessenger telegramMessenger = new TelegramMessenger() {
-            @Override
-            public void sendMessage(
-                    long chatId, String text, InlineKeyboardMarkup keyboard)
-                    throws TelegramApiException {
-                sendTelegramMessage(chatId, text, keyboard);
-            }
-
-            @Override
-            public void answerCallback(String callbackQueryId, String text)
-                    throws TelegramApiException {
-                answerTelegramCallback(callbackQueryId, text);
-            }
-
-            @Override
-            public boolean setMyCommands(SetMyCommands commands) throws TelegramApiException {
-                return Boolean.TRUE.equals(execute(commands));
-            }
-        };
-        PendingDrawService pendingDrawService = new PendingDrawService(
-                pendingDrawStore, exchangeService, organizerService, telegramMessenger);
-        this.responder = new BotResponder(telegramMessenger);
-        this.commandMenu = new BotCommandMenu(organizerService, telegramMessenger);
-        this.buttonController = new BotButtonController(
-                organizerService, exchangeService, pendingDrawService, responder, commandMenu);
-        this.commandController = new BotCommandController(
-                organizerService, exchangeService, pendingDrawService, buttonController, responder);
+        this(botToken, botUsername, organizerService, null, pendingDrawStore,
+                loadLanguageStore(pendingDrawStore));
     }
 
     SecretSantaBot(
@@ -83,14 +56,32 @@ public class SecretSantaBot extends TelegramLongPollingBot {
             LanguageStore languageStore) {
         super(botToken);
         this.botUsername = botUsername;
-        TelegramMessenger messenger = Objects.requireNonNull(telegramMessenger);
+        TelegramMessenger messenger = telegramMessenger != null ? telegramMessenger : new TelegramMessenger() {
+            @Override
+            public void sendMessage(long chatId, String text, InlineKeyboardMarkup keyboard)
+                    throws TelegramApiException {
+                sendTelegramMessage(chatId, text, keyboard);
+            }
+
+            @Override
+            public void answerCallback(String callbackQueryId, String text)
+                    throws TelegramApiException {
+                answerTelegramCallback(callbackQueryId, text);
+            }
+
+            @Override
+            public boolean setMyCommands(SetMyCommands commands) throws TelegramApiException {
+                return Boolean.TRUE.equals(execute(commands));
+            }
+        };
         ExchangeService exchangeService =
                 new ExchangeService(organizerService, pendingDrawStore.exchangeStore());
         PendingDrawService pendingDrawService =
                 new PendingDrawService(
                         pendingDrawStore, exchangeService, organizerService, messenger, languageStore);
         this.responder = new BotResponder(messenger, languageStore);
-        this.commandMenu = new BotCommandMenu(organizerService, messenger);
+        this.languageSelection = languageStore == null ? null : new LanguageSelection(languageStore, messenger);
+        this.commandMenu = new BotCommandMenu(organizerService, messenger, languageStore);
         this.buttonController = new BotButtonController(
                 organizerService, exchangeService, pendingDrawService, responder, commandMenu);
         this.commandController = new BotCommandController(
@@ -119,6 +110,27 @@ public class SecretSantaBot extends TelegramLongPollingBot {
                 responder.beginCallback(callback.getFrom().getId());
             }
             try {
+                if (languageSelection != null && callback.getData() != null
+                        && callback.getData().startsWith("language:")) {
+                    if (callback.getFrom() == null || callback.getFrom().getId() == null
+                            || callback.getMessage() == null || callback.getId() == null) {
+                        return;
+                    }
+                    long userId = callback.getFrom().getId();
+                    if (!Objects.equals(callback.getMessage().getChatId(), userId)) {
+                        responder.answerCallback(callback.getId(), BotMessages.CALLBACK_PRIVATE_ONLY);
+                        return;
+                    }
+                    if (BotButtons.LANGUAGE_CHOOSE.equals(callback.getData())) {
+                        languageSelection.prompt(userId);
+                        responder.answerCallback(callback.getId(), language -> language == BotLanguage.ENGLISH
+                                ? "Choose a language." : "Оберіть мову.");
+                    } else if (languageSelection.choose(
+                            userId, userId, callback.getData(), callback.getId())) {
+                        buttonController.showStartMenu(userId, userId, true);
+                    }
+                    return;
+                }
                 buttonController.handleCallbackQuery(callback);
             } finally {
                 responder.endCallback();
@@ -142,6 +154,28 @@ public class SecretSantaBot extends TelegramLongPollingBot {
         long userId = message.getFrom().getId();
         boolean privateChat = Boolean.TRUE.equals(message.getChat().isUserChat());
         String messageText = message.getText().strip();
+        if (languageSelection != null && privateChat && chatId == userId) {
+            String command = messageText.split("\\s+", 2)[0].toLowerCase(Locale.ROOT);
+            int separator = command.indexOf('@');
+            if (separator >= 0) {
+                command = command.substring(0, separator);
+            }
+            if (command.equals("/language")
+                    || (command.equals("/start") && languageSelection.requiresSelection(userId))) {
+                languageSelection.prompt(userId);
+                return;
+            }
+            if (command.equals("/forgetlanguage")) {
+                BotLanguage previous = responder.languageFor(userId);
+                if (languageSelection.forget(userId)) {
+                    commandMenu.refreshForUser(userId);
+                    responder.sendText(userId, ignored -> previous == BotLanguage.ENGLISH
+                            ? "Your language preference was deleted. Use /start to choose again."
+                            : "Вибір мови видалено. Скористайтеся /start, щоб обрати знову.");
+                }
+                return;
+            }
+        }
         if (privateChat
                 && buttonController.isAwaitingInput(userId)
                 && !messageText.startsWith("/")) {
@@ -155,6 +189,14 @@ public class SecretSantaBot extends TelegramLongPollingBot {
                 userId,
                 message.getFrom().getFirstName(),
                 privateChat);
+    }
+
+    private static LanguageStore loadLanguageStore(PendingDrawStore store) {
+        try {
+            return store.languageStore();
+        } catch (IOException exception) {
+            throw new IllegalStateException("Could not load language preferences.", exception);
+        }
     }
 
     private void sendTelegramMessage(

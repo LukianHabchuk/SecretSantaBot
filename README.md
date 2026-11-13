@@ -18,14 +18,15 @@ Provide these values through the process environment or a trusted secret manager
 - `TELEGRAM_BOT_USERNAME` — bot username
 - `SECRET_SANTA_SETUP_CODE` — one-time organizer claim code, at least 32
   characters and randomly generated
-- `SECRET_SANTA_DATA_KEY` — stable Base64-encoded 256-bit key for exchange state
-  and pending draws
+- `SECRET_SANTA_DATA_KEY` — stable Base64-encoded 256-bit key for exchange state,
+  pending draws, and language preferences
 
-The data key must remain the same while an exchange or draw is active. Store it
-securely outside the repository and keep a backup; losing it makes persisted
-exchange data unrecoverable. The bot encrypts exchange state and pending draws
-with AES-256-GCM under `<user.home>/.secretsanta-telegram-bot/`. Do not commit
-credentials, keys, or environment files.
+The data key must remain the same while encrypted exchange data or language
+preferences are retained. Store it securely outside the repository and keep
+a backup; losing it makes those files unreadable. The bot encrypts exchange
+state, pending draws, and language preferences with AES-256-GCM under
+`<user.home>/.secretsanta-telegram-bot/`. Do not commit credentials, keys, or
+environment files.
 
 Telegram bot chats are not end-to-end encrypted between participants and the bot.
 Telegram and the machine or service running the bot can access messages processed
@@ -62,11 +63,12 @@ keyboard; the simulator labels each keyboard in its output.
 
 To walk through an exchange:
 
-1. As user `100`, send `/start`, press **Я організатор**, enter the local demo
-   setup code shown by `help`, and press **Відкрити реєстрацію**.
+1. As user `100`, send `/start`, choose **Українська**, press **Я організатор**,
+   enter the local demo setup code shown by `help`, and press **Відкрити реєстрацію**.
 2. Copy the invite code from the local output. For each participant, send
-   `/start`, press **Приєднатися за кодом**, enter the invite code, and confirm
-   or edit the name.
+   `/start`, choose **Українська**, press **Приєднатися за кодом**, enter the
+   invite code, and confirm or edit the name. Alternatively, choose **English**
+   to try the English flow.
 3. During registration, a participant can press **Запросити пару** and select
    another participant. The recipient accepts or declines from their own
    simulated chat. An organizer can also manage pairs from **Змінити пари**.
@@ -145,11 +147,11 @@ or button tokens. Draw activity is logged only when every assignment has been
 delivered; assignment delivery errors are still logged for troubleshooting.
 An attempt log does not mean the action succeeded.
 
-The bot stores the organizer ID and encrypted exchange state in the persistent
-`bot-data` volume. Back up that volume and the matching
-`SECRET_SANTA_DATA_KEY` separately; the key must remain stable to read any
-backup and while an exchange or draw is active. Losing the key makes encrypted
-exchange data unrecoverable. Do not delete the volume as part of normal
+The bot stores the organizer ID, encrypted exchange state, and encrypted
+language preferences in the persistent `bot-data` volume. Back up that volume
+and the matching `SECRET_SANTA_DATA_KEY` separately; the key must remain stable
+to read any backup or retained encrypted data. Losing the key makes encrypted
+exchange data and preferences unrecoverable. Do not delete the volume as part of normal
 shutdown. The organizer can reset registration only after confirming and before
 starting a draw.
 
@@ -166,6 +168,11 @@ but this app has no health endpoint or external error monitoring; watch the logs
 and configure platform-specific monitoring before relying on a hosted instance.
 
 ## Organizer setup
+
+Each user chooses English or Ukrainian on their first private `/start`. Use the
+**Language / Мова** button or `/language` to change it. The choice survives
+restarts and exchange cleanup; `/forgetlanguage` deletes that user's saved
+preference. The next `/start` asks again.
 
 In a private chat with the bot, the organizer sends `/start`, selects **Я
 організатор**, and enters the one-time setup code. The bot stores only the

@@ -28,11 +28,20 @@ final class BotCommandMenu {
 
     private final OrganizerService organizerService;
     private final TelegramMessenger messenger;
+    private final LanguageStore languageStore;
     private boolean synchronizedWithTelegram;
 
     BotCommandMenu(OrganizerService organizerService, TelegramMessenger messenger) {
+        this(organizerService, messenger, null);
+    }
+
+    BotCommandMenu(
+            OrganizerService organizerService,
+            TelegramMessenger messenger,
+            LanguageStore languageStore) {
         this.organizerService = organizerService;
         this.messenger = messenger;
+        this.languageStore = languageStore;
     }
 
     synchronized void ensureInitialized() {
@@ -49,9 +58,15 @@ final class BotCommandMenu {
             if (organizerId.isEmpty()) {
                 participantCommands.add(new BotCommand("claim", "Підтвердити права організатора"));
             }
+            if (languageStore != null) {
+                participantCommands = localizedCommands(false, organizerId.isEmpty(), BotLanguage.UKRAINIAN);
+            }
             publish(participantCommands, new BotCommandScopeAllPrivateChats());
             if (organizerId.isPresent()) {
-                publish(ORGANIZER_COMMANDS, new BotCommandScopeChat(
+                List<BotCommand> organizerCommands = languageStore == null ? ORGANIZER_COMMANDS
+                        : localizedCommands(true, false,
+                                languageStore.get(organizerId.getAsLong()).orElse(BotLanguage.UKRAINIAN));
+                publish(organizerCommands, new BotCommandScopeChat(
                         Long.toString(organizerId.getAsLong())));
             }
             synchronizedWithTelegram = true;
@@ -59,6 +74,54 @@ final class BotCommandMenu {
             LOGGER.log(Level.WARNING, BotLogMessages.COMMAND_MENU_UPDATE_FAILED
                     + " (" + exception.getClass().getSimpleName() + ")");
         }
+    }
+
+    synchronized void refreshForUser(long userId) {
+        if (languageStore == null) {
+            return;
+        }
+        try {
+            OptionalLong organizerId = organizerService.organizerId();
+            boolean organizer = organizerId.isPresent() && organizerId.getAsLong() == userId;
+            BotLanguage language = languageStore.get(userId).orElse(BotLanguage.UKRAINIAN);
+            publish(localizedCommands(organizer, organizerId.isEmpty(), language),
+                    new BotCommandScopeChat(Long.toString(userId)));
+        } catch (IOException | TelegramApiException exception) {
+            LOGGER.log(Level.WARNING, BotLogMessages.COMMAND_MENU_UPDATE_FAILED
+                    + " (" + exception.getClass().getSimpleName() + ")");
+        }
+    }
+
+    private static List<BotCommand> localizedCommands(
+            boolean organizer, boolean claimAvailable, BotLanguage language) {
+        List<BotCommand> commands = new ArrayList<>();
+        for (BotCommand command : organizer ? ORGANIZER_COMMANDS : PARTICIPANT_COMMANDS) {
+            String description = language == BotLanguage.ENGLISH
+                    ? englishDescription(command.getCommand()) : command.getDescription();
+            commands.add(new BotCommand(command.getCommand(), description));
+        }
+        if (!organizer && claimAvailable) {
+            commands.add(new BotCommand("claim", language == BotLanguage.ENGLISH
+                    ? "Claim organizer access" : "Підтвердити права організатора"));
+        }
+        commands.add(new BotCommand("language", language == BotLanguage.ENGLISH
+                ? "Change language" : "Змінити мову"));
+        commands.add(new BotCommand("forgetlanguage", language == BotLanguage.ENGLISH
+                ? "Delete language preference" : "Видалити вибір мови"));
+        return commands;
+    }
+
+    private static String englishDescription(String command) {
+        return switch (command) {
+            case "start" -> "Open menu";
+            case "join" -> "Join with a code and name";
+            case "register" -> "How to join the exchange";
+            case "open" -> "Open registration";
+            case "list" -> "Show participants";
+            case "pair" -> "Manage pairs";
+            case "run" -> "Run or retry the draw";
+            default -> throw new IllegalArgumentException("Unknown command menu entry.");
+        };
     }
 
     private void publish(List<BotCommand> commands, BotCommandScope scope)

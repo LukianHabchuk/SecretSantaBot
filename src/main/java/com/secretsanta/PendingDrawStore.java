@@ -114,6 +114,10 @@ final class PendingDrawStore {
         return new ExchangeStore(dataDirectory, key);
     }
 
+    LanguageStore languageStore() throws IOException {
+        return new LanguageStore(dataDirectory, key);
+    }
+
     Optional<PendingDraw> load() throws IOException {
         if (!Files.exists(pendingFile)) {
             return Optional.empty();

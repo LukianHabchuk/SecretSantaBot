@@ -8,6 +8,7 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 final class BotButtons {
     static final String LANGUAGE_ENGLISH = "language:en";
     static final String LANGUAGE_UKRAINIAN = "language:ua";
+    static final String LANGUAGE_CHOOSE = "language:choose";
     static final String ONBOARDING_PREFIX = "onboarding:";
     static final String CLAIM = ONBOARDING_PREFIX + "claim";
     static final String JOIN = ONBOARDING_PREFIX + "join";
@@ -45,6 +46,12 @@ final class BotButtons {
                 button("Українська", LANGUAGE_UKRAINIAN))));
     }
 
+    static InlineKeyboardMarkup withLanguageControl(InlineKeyboardMarkup original) {
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>(original.getKeyboard());
+        rows.add(List.of(button("Language / Мова", LANGUAGE_CHOOSE)));
+        return keyboard(rows);
+    }
+
     static InlineKeyboardMarkup localize(BotLanguage language, InlineKeyboardMarkup original) {
         if (language != BotLanguage.ENGLISH || original == null) {
             return original;
@@ -53,7 +60,7 @@ final class BotButtons {
         for (List<InlineKeyboardButton> row : original.getKeyboard()) {
             List<InlineKeyboardButton> translated = new ArrayList<>();
             for (InlineKeyboardButton item : row) {
-                String label = englishLabel(item.getCallbackData());
+                String label = englishLabel(item);
                 translated.add(label == null ? item : button(label, item.getCallbackData()));
             }
             rows.add(translated);
@@ -61,7 +68,8 @@ final class BotButtons {
         return keyboard(rows);
     }
 
-    private static String englishLabel(String data) {
+    private static String englishLabel(InlineKeyboardButton item) {
+        String data = item.getCallbackData();
         if (data == null) {
             return null;
         }
@@ -74,7 +82,8 @@ final class BotButtons {
             case PAIR_REQUEST_STATUS -> "My pair request";
             case ORGANIZER_PAIR -> "Manage pairs";
             case ORGANIZER_ROSTER -> "Participants";
-            case ORGANIZER_RUN_DRAW -> "Run or retry the draw";
+            case ORGANIZER_RUN_DRAW -> item.getText().equals("Повторити доставку")
+                    ? "Retry delivery" : "Run the draw";
             case ORGANIZER_DRAW_STATUS -> "Exchange status";
             case ORGANIZER_REPLACE_DRAW -> "Run a new draw";
             case ORGANIZER_CLEANUP -> "Delete exchange";

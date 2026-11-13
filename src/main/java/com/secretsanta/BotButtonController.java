@@ -114,6 +114,7 @@ final class BotButtonController {
             return;
         }
         commandMenu.ensureInitialized();
+        commandMenu.refreshForUser(userId);
         pendingInputs.remove(userId);
         pendingJoins.remove(userId);
         pendingResetTokens.remove(userId);
@@ -124,6 +125,15 @@ final class BotButtonController {
             boolean organizer = organizerId.isPresent() && organizerId.getAsLong() == userId;
             boolean registeredParticipant = exchangeService.participant(userId).isPresent();
             ExchangeState state = exchangeService.state();
+            var keyboard = organizer
+                    ? BotButtons.organizerMenu(state, registeredParticipant)
+                    : state.phase() == ExchangeState.Phase.REGISTRATION_OPEN
+                                    && registeredParticipant
+                            ? BotButtons.participantPairMenu()
+                            : BotButtons.participantStartMenu(organizerId.isEmpty());
+            if (responder.supportsLocalization()) {
+                keyboard = BotButtons.withLanguageControl(keyboard);
+            }
             responder.sendWithKeyboard(
                     chatId,
                     organizer
@@ -131,12 +141,7 @@ final class BotButtonController {
                             : organizerId.isPresent()
                                     ? BotMessages.PARTICIPANT_JOIN_START
                                     : BotMessages.PARTICIPANT_START,
-                    organizer
-                            ? BotButtons.organizerMenu(state, registeredParticipant)
-                            : state.phase() == ExchangeState.Phase.REGISTRATION_OPEN
-                                            && registeredParticipant
-                                    ? BotButtons.participantPairMenu()
-                                    : BotButtons.participantStartMenu(organizerId.isEmpty()));
+                    keyboard);
         } catch (IOException exception) {
             LOGGER.log(Level.SEVERE, BotLogMessages.ONBOARDING_STATE_READ_FAILED, exception);
             responder.sendText(chatId, BotMessages.MENU_LOAD_FAILED);
@@ -523,7 +528,7 @@ final class BotButtonController {
         }
         String firstName = context.firstName();
         String suggestedName = firstName == null || firstName.isBlank()
-                ? BotMessages.FALLBACK_PARTICIPANT_NAME
+                ? BotResponder.staticText(responder.languageFor(userId), BotMessages.FALLBACK_PARTICIPANT_NAME)
                 : firstName.strip();
         showJoinConfirmation(userId, new PendingJoin(inviteCode, suggestedName, newToken()));
     }

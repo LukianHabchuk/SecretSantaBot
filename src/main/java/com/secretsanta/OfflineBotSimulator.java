@@ -157,7 +157,8 @@ public final class OfflineBotSimulator {
         output.println("Each user ID represents a separate simulated private chat.");
     }
 
-    static Session createSession(Path dataDirectory, byte[] dataKey, PrintStream output) {
+    static Session createSession(Path dataDirectory, byte[] dataKey, PrintStream output)
+            throws IOException {
         OrganizerService organizerService = new OrganizerService(
                 new OrganizerStore(dataDirectory), DEMO_SETUP_CODE);
         LocalMessenger messenger = new LocalMessenger(output);
@@ -166,7 +167,8 @@ public final class OfflineBotSimulator {
                 "offline-bot",
                 organizerService,
                 messenger,
-                new PendingDrawStore(dataDirectory, dataKey));
+                new PendingDrawStore(dataDirectory, dataKey),
+                new LanguageStore(dataDirectory, dataKey));
         return new Session(bot, messenger);
     }
 
