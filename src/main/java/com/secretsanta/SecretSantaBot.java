@@ -3,6 +3,7 @@ package com.secretsanta;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.TelegramBotsApi;
 import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
+import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
@@ -23,6 +24,7 @@ public class SecretSantaBot extends TelegramLongPollingBot {
     private final String botUsername;
     private final BotButtonController buttonController;
     private final BotCommandController commandController;
+    private final BotCommandMenu commandMenu;
 
     SecretSantaBot(
             String botToken,
@@ -46,12 +48,18 @@ public class SecretSantaBot extends TelegramLongPollingBot {
                     throws TelegramApiException {
                 answerTelegramCallback(callbackQueryId, text);
             }
+
+            @Override
+            public boolean setMyCommands(SetMyCommands commands) throws TelegramApiException {
+                return Boolean.TRUE.equals(execute(commands));
+            }
         };
         PendingDrawService pendingDrawService = new PendingDrawService(
                 pendingDrawStore, exchangeService, organizerService, telegramMessenger);
         BotResponder responder = new BotResponder(telegramMessenger);
+        this.commandMenu = new BotCommandMenu(organizerService, telegramMessenger);
         this.buttonController = new BotButtonController(
-                organizerService, exchangeService, pendingDrawService, responder);
+                organizerService, exchangeService, pendingDrawService, responder, commandMenu);
         this.commandController = new BotCommandController(
                 organizerService, exchangeService, pendingDrawService, buttonController, responder);
     }
@@ -70,8 +78,9 @@ public class SecretSantaBot extends TelegramLongPollingBot {
         PendingDrawService pendingDrawService =
                 new PendingDrawService(pendingDrawStore, exchangeService, organizerService, messenger);
         BotResponder responder = new BotResponder(messenger);
+        this.commandMenu = new BotCommandMenu(organizerService, messenger);
         this.buttonController = new BotButtonController(
-                organizerService, exchangeService, pendingDrawService, responder);
+                organizerService, exchangeService, pendingDrawService, responder, commandMenu);
         this.commandController = new BotCommandController(
                 organizerService, exchangeService, pendingDrawService, buttonController, responder);
     }
@@ -81,6 +90,10 @@ public class SecretSantaBot extends TelegramLongPollingBot {
     @Override
     public String getBotUsername() {
         return botUsername;
+    }
+
+    void initializeCommandMenus() {
+        commandMenu.ensureInitialized();
     }
 
     @Override
@@ -167,11 +180,13 @@ public class SecretSantaBot extends TelegramLongPollingBot {
                     BotLogMessages.INSTANCE_LOCK_UNAVAILABLE, exception);
         }
         TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-        botsApi.registerBot(new SecretSantaBot(
+        SecretSantaBot bot = new SecretSantaBot(
                 configuration.botToken(),
                 configuration.botUsername(),
                 organizerService,
-                pendingDrawStore));
+                pendingDrawStore);
+        botsApi.registerBot(bot);
+        bot.initializeCommandMenus();
         LOGGER.info(BotLogMessages.BOT_STARTED);
     }
 

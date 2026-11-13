@@ -1,5 +1,6 @@
 package com.secretsanta;
 
+import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
@@ -8,4 +9,6 @@ interface TelegramMessenger {
             throws TelegramApiException;
 
     void answerCallback(String callbackQueryId, String text) throws TelegramApiException;
+
+    boolean setMyCommands(SetMyCommands commands) throws TelegramApiException;
 }

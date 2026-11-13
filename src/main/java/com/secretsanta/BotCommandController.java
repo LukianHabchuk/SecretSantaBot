@@ -83,6 +83,9 @@ final class BotCommandController {
         try {
             OrganizerService.ClaimResult result =
                     organizerService.claim(command.userId(), command.arguments());
+            if (result == OrganizerService.ClaimResult.CLAIMED) {
+                buttonController.refreshCommandMenu();
+            }
             responder.sendText(
                     command.chatId(),
                     result == OrganizerService.ClaimResult.CLAIMED

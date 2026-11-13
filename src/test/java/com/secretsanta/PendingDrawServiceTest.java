@@ -15,6 +15,7 @@ import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
@@ -232,6 +233,9 @@ class PendingDrawServiceTest {
 
             @Override
             public void answerCallback(String callbackQueryId, String text) {}
+
+            @Override
+            public boolean setMyCommands(SetMyCommands commands) { return true; }
         };
         PendingDrawService service = new PendingDrawService(
                 new PendingDrawStore(dataDirectory, KEY),
@@ -362,6 +366,9 @@ class PendingDrawServiceTest {
 
             @Override
             public void answerCallback(String callbackQueryId, String text) {}
+
+            @Override
+            public boolean setMyCommands(SetMyCommands commands) { return true; }
         };
         PendingDrawService replacementService = new PendingDrawService(
                 new PendingDrawStore(dataDirectory, KEY),
@@ -631,5 +638,8 @@ class PendingDrawServiceTest {
 
         @Override
         public void answerCallback(String callbackQueryId, String text) {}
+
+        @Override
+        public boolean setMyCommands(SetMyCommands commands) { return true; }
     }
 }

@@ -186,6 +186,11 @@ the organizer and participant flows. The organizer can select **Скинути
 for a draw.
 
 The legacy `/join <invite code> <display name>` command remains available.
+Telegram's command menu lists participant commands in private chats and
+organizer commands in the organizer's private chat. Not every inline button
+has a slash-command equivalent. Before organizer setup, `/claim` is also listed.
+If updating the menu fails, the bot logs a
+warning and retries on `/start`; the normal buttons remain available.
 During registration, participants can use **Запросити пару** to privately ask
 another unpaired participant to pair. The recipient can accept or decline, and
 the requester can cancel; an unresolved request blocks registration closure and

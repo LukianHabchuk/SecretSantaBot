@@ -25,6 +25,7 @@ final class BotButtonController {
     private final ExchangeService exchangeService;
     private final PendingDrawService pendingDrawService;
     private final BotResponder responder;
+    private final BotCommandMenu commandMenu;
     private final Map<Long, PendingInput> pendingInputs = new HashMap<>();
     private final Map<Long, PendingJoin> pendingJoins = new HashMap<>();
     private final Map<Long, String> pendingResetTokens = new HashMap<>();
@@ -44,11 +45,13 @@ final class BotButtonController {
             OrganizerService organizerService,
             ExchangeService exchangeService,
             PendingDrawService pendingDrawService,
-            BotResponder responder) {
+            BotResponder responder,
+            BotCommandMenu commandMenu) {
         this.organizerService = organizerService;
         this.exchangeService = exchangeService;
         this.pendingDrawService = pendingDrawService;
         this.responder = responder;
+        this.commandMenu = commandMenu;
         participantPairController =
                 new BotParticipantPairController(exchangeService, responder);
         onboardingActions = Map.of(
@@ -109,6 +112,7 @@ final class BotButtonController {
             responder.sendText(chatId, BotMessages.PRIVATE_START_ONLY);
             return;
         }
+        commandMenu.ensureInitialized();
         pendingInputs.remove(userId);
         pendingJoins.remove(userId);
         pendingResetTokens.remove(userId);
@@ -489,6 +493,7 @@ final class BotButtonController {
             if (result == OrganizerService.ClaimResult.CLAIMED
                     || (result == OrganizerService.ClaimResult.ALREADY_CLAIMED
                             && organizerService.isOrganizer(userId))) {
+                commandMenu.refresh();
                 responder.sendText(userId, BotMessages.ORGANIZER_CLAIMED);
                 showStartMenu(userId, userId, true);
                 return;
@@ -498,6 +503,10 @@ final class BotButtonController {
             LOGGER.log(Level.SEVERE, BotLogMessages.ORGANIZER_CLAIM_PERSIST_FAILED, exception);
             responder.sendText(userId, BotMessages.CLAIM_PERSIST_FAILED);
         }
+    }
+
+    void refreshCommandMenu() {
+        commandMenu.refresh();
     }
 
     private void promptJoinName(InputContext context, String inviteCode) {

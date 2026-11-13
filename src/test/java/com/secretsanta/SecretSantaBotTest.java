@@ -21,6 +21,10 @@ import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.User;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
+import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
+import org.telegram.telegrambots.meta.api.objects.commands.BotCommand;
+import org.telegram.telegrambots.meta.api.objects.commands.scope.BotCommandScopeAllPrivateChats;
+import org.telegram.telegrambots.meta.api.objects.commands.scope.BotCommandScopeChat;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 class SecretSantaBotTest {
@@ -118,6 +122,99 @@ class SecretSantaBotTest {
                 .flatMap(List::stream)
                 .anyMatch(button -> button.getCallbackData().equals("onboarding:join")));
         assertFalse(menu.text().contains("Створи обмін"));
+    }
+
+    @Test
+    void startupPublishesSeparateParticipantAndExistingOrganizerCommandMenus() throws Exception {
+        OrganizerService organizerService = createService();
+        organizerService.claim(100L, "setup-code");
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+
+        bot.initializeCommandMenus();
+
+        assertEquals(2, messenger.commandMenus.size());
+        SetMyCommands participants = messenger.commandMenus.get(0);
+        assertTrue(participants.getScope() instanceof BotCommandScopeAllPrivateChats);
+        assertEquals(List.of("start", "join", "register"),
+                participants.getCommands().stream().map(BotCommand::getCommand).toList());
+        SetMyCommands organizer = messenger.commandMenus.get(1);
+        assertTrue(organizer.getScope() instanceof BotCommandScopeChat);
+        assertEquals("100", ((BotCommandScopeChat) organizer.getScope()).getChatId());
+        assertEquals(List.of("start", "open", "list", "pair", "run"),
+                organizer.getCommands().stream().map(BotCommand::getCommand).toList());
+    }
+
+    @Test
+    void successfulOrganizerClaimUpdatesTheCommandMenu() {
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(createService(), messenger);
+        bot.onUpdateReceived(update(201L, 201L, "private", "/start"));
+        assertTrue(messenger.commandMenus.getLast().getCommands().stream()
+                .anyMatch(command -> command.getCommand().equals("claim")));
+
+        bot.onUpdateReceived(update(100L, 100L, "private", "/claim setup-code"));
+
+        SetMyCommands participantMenu = messenger.commandMenus.stream()
+                .filter(menu -> menu.getScope() instanceof BotCommandScopeAllPrivateChats)
+                .reduce((first, second) -> second)
+                .orElseThrow();
+        assertTrue(participantMenu.getCommands().stream()
+                .noneMatch(command -> command.getCommand().equals("claim")));
+        assertTrue(messenger.commandMenus.stream().anyMatch(menu ->
+                menu.getScope() instanceof BotCommandScopeChat scope
+                        && scope.getChatId().equals("100")
+                        && menu.getCommands().stream()
+                                .anyMatch(command -> command.getCommand().equals("open"))));
+    }
+
+    @Test
+    void organizerClaimThroughButtonsUpdatesTheCommandMenu() {
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(createService(), messenger);
+        bot.onUpdateReceived(update(100L, 100L, "private", "/start"));
+        bot.onUpdateReceived(callbackUpdate(
+                "onboarding:claim", 100L, 100L, "claim", "Organizer"));
+
+        bot.onUpdateReceived(update(100L, 100L, "private", "setup-code"));
+
+        assertTrue(messenger.commandMenus.stream().anyMatch(menu ->
+                menu.getScope() instanceof BotCommandScopeChat scope
+                        && scope.getChatId().equals("100")
+                        && menu.getCommands().stream()
+                                .anyMatch(command -> command.getCommand().equals("open"))));
+    }
+
+    @Test
+    void failedCommandMenuPublicationDoesNotBlockStartAndIsRetried() {
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        messenger.failCommandMenus = true;
+        SecretSantaBot bot = createBot(createService(), messenger);
+
+        bot.onUpdateReceived(update(201L, 201L, "private", "/start"));
+        assertTrue(messenger.sentMessages.getLast().keyboard() != null);
+        messenger.failCommandMenus = false;
+        bot.onUpdateReceived(update(201L, 201L, "private", "/start"));
+
+        assertTrue(messenger.commandMenus.stream().anyMatch(menu ->
+                menu.getScope() instanceof BotCommandScopeAllPrivateChats));
+    }
+
+    @Test
+    void rejectedCommandMenuUpdateDoesNotUndoClaimAndRetriesOnStart() throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        messenger.rejectCommandMenus = true;
+        SecretSantaBot bot = createBot(organizerService, messenger);
+
+        bot.onUpdateReceived(update(100L, 100L, "private", "/claim setup-code"));
+
+        assertTrue(organizerService.isOrganizer(100L));
+        assertTrue(messenger.sentMessages.getLast().text().contains("організатор"));
+        messenger.rejectCommandMenus = false;
+        bot.onUpdateReceived(update(100L, 100L, "private", "/start"));
+        assertTrue(messenger.commandMenus.stream()
+                .anyMatch(menu -> menu.getScope() instanceof BotCommandScopeChat));
     }
 
     @Test
@@ -1316,6 +1413,9 @@ class SecretSantaBotTest {
 
                     @Override
                     public void answerCallback(String callbackQueryId, String text) {}
+
+                    @Override
+                    public boolean setMyCommands(SetMyCommands commands) { return true; }
                 },
                 testPendingDrawStore());
     }
@@ -1440,8 +1540,24 @@ class SecretSantaBotTest {
     private static final class TestTelegramMessenger implements TelegramMessenger {
         private final List<SentMessage> sentMessages = new ArrayList<>();
         private final List<CallbackAnswer> callbackAnswers = new ArrayList<>();
+        private final List<SetMyCommands> commandMenus = new ArrayList<>();
 
         private Long failChatId;
+        private boolean failCommandMenus;
+        private boolean rejectCommandMenus;
+
+        @Override
+        public boolean setMyCommands(SetMyCommands commands) throws TelegramApiException {
+            if (failCommandMenus) {
+                throw new TelegramApiException("Simulated command menu failure.");
+            }
+            commands.validate();
+            if (rejectCommandMenus) {
+                return false;
+            }
+            commandMenus.add(commands);
+            return true;
+        }
 
         @Override
         public void sendMessage(long chatId, String text, InlineKeyboardMarkup keyboard)

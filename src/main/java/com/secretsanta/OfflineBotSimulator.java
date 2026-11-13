@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
 import org.telegram.telegrambots.meta.api.objects.Chat;
+import org.telegram.telegrambots.meta.api.methods.commands.SetMyCommands;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
@@ -311,6 +312,11 @@ public final class OfflineBotSimulator {
         @Override
         public void answerCallback(String callbackQueryId, String text) {
             output.println("[offline callback " + callbackQueryId + "] " + text);
+        }
+
+        @Override
+        public boolean setMyCommands(SetMyCommands commands) {
+            return true;
         }
 
         private String callbackData(long userId, int buttonNumber) {

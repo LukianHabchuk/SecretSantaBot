@@ -7,6 +7,8 @@ final class BotLogMessages {
     static final String JOIN_NOTIFICATION_FAILED = "Could not notify organizer of participant registration.";
     static final String ACTION_ATTEMPTED = "action_attempted ";
     static final String ASSIGNMENT_DELIVERY_COMPLETED = "assignment_delivery_completed";
+    static final String COMMAND_MENU_UPDATE_FAILED =
+            "Could not update Telegram command menus; will retry on /start.";
     static final String PENDING_DRAW_CHECK_FAILED =
             "Could not check pending draw before pairing.";
     static final String ONBOARDING_STATE_READ_FAILED =
