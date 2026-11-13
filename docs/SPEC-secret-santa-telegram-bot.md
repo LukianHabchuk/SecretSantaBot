@@ -216,6 +216,52 @@ delivery payloads. Do not place credentials or keys in source files or docs.
     can access messages the bot processes; bot chats are not end-to-end
     encrypted.
 
+## Localization: English and Ukrainian
+
+### Objective and scope
+- Make the bot usable in English and Ukrainian without changing exchange,
+  pairing, assignment, or authorization behavior.
+- Each person chooses their own language on their first private `/start` and
+  can change it later. The initial choice is presented in both languages.
+- Localize all bot-facing messages, prompts, buttons, callback answers, command
+  descriptions, and delivery and error messages. Preserve user-provided names,
+  invite codes, command names, and callback data.
+- Notifications and assignments sent to another person use the recipient's
+  language, not the sender's. Existing messages already sent by Telegram are
+  not rewritten.
+- Support only English and Ukrainian. Translation of arbitrary participant
+  content and localization of application logs are out of scope.
+
+### Persistence and compatibility
+- Persist each user's choice across bot restarts and exchange cleanup. Existing
+  users without a saved choice are asked on their next private `/start`.
+- Store the minimum required association between a Telegram user ID and the
+  selected language, protected at rest using the existing stable data key.
+  Persist updates atomically and retain these preferences independently of
+  exchange data; never log preference records.
+- Provide a way for a user to delete their own saved preference. After deletion,
+  the next private `/start` requests a new choice.
+- Existing exchanges, organizer identities, and encrypted snapshots remain
+  readable without resetting or recreating them. Existing callback controls
+  must not acquire new permissions or expose other participants' information.
+- Explicitly report preference storage failures; do not claim a choice was saved
+  when it was not. Validate language selection and private-chat ownership on
+  callbacks.
+
+### Acceptance and verification
+- A new or existing user can select either language, complete the normal
+  onboarding flow, change language, and retain the selection after restart.
+- Two users with different languages receive their own localized messages,
+  including pair notifications, draw assignments, and receipt controls.
+- A saved preference survives exchange cleanup; deleting a preference causes
+  a new choice to be requested on the next private `/start`.
+- Automated tests cover language selection and changes, restart persistence,
+  cleanup and deletion, malformed or unauthorized callbacks, storage failures,
+  mixed-language notifications, and existing exchange recovery.
+- Use JUnit tests under `src/test/java/com/secretsanta/`, run `mvn test` with
+  JDK 27, and verify both languages through the offline simulator. No new
+  dependency or external service is required.
+
 ## Testing Strategy
 - Use JUnit Jupiter tests under `src/test/java/com/secretsanta/`.
 - Test private onboarding, Telegram identity/name confirmation, invite
