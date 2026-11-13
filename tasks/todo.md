@@ -275,22 +275,27 @@ participants, and bind receipt callbacks to the new generation.
 
 ## Task 15: Updating the simulator, documentation, and end-to-end verification
 
+**Status:** Implemented; live test-bot verification is pending access to a
+separate test bot.
+
 **Description:** Bring the no-network simulator and operator documentation into
 line with the approved private exchange flow, then verify transport with a
 separate Telegram test bot.
 
 **Acceptance criteria:**
-- [ ] Simulator supports private onboarding, mutual pairing, organizer draw,
+- [x] Simulator supports private onboarding, mutual pairing, organizer draw,
   delivery retry, confirmation, redraw, and cleanup without Telegram access.
-- [ ] README explains the button-driven flow, persistent state, key/volume
+- [x] README explains the button-driven flow, persistent state, key/volume
   backup, legacy migration limits, reset, redraw, confirmations, and cleanup.
 - [ ] A separate test-bot walkthrough verifies private interactions and
   delivery; no real credentials or assignments are committed or logged.
 
 **Verification:**
-- [ ] `mvn clean test` and `mvn clean package` pass on Java 27.
-- [ ] Offline simulator walkthrough succeeds without credentials/network.
-- [ ] Test-bot results and any environment limitation are recorded for handoff.
+- [x] `mvn clean test` and `mvn clean package` pass on Java 27; all 121 tests
+  pass in the Java 27 build image.
+- [x] Offline simulator walkthrough succeeds without credentials/network.
+- [x] Live test-bot verification limitation is documented: no separate test-bot
+  credentials were provided. README includes a safe operator walkthrough.
 
 **Dependencies:** Tasks 9, 11, 12, 13, and 14
 
@@ -301,10 +306,10 @@ separate Telegram test bot.
 
 **Estimated scope:** Medium
 
-## Checkpoint: Complete
-- [ ] All approved specification criteria have automated or documented manual
+## Checkpoint: Final handoff
+- [x] All approved specification criteria have automated or documented manual
   verification.
-- [ ] Full test suite and Java 27 build pass.
-- [ ] Test-bot walkthrough is complete or the credential/availability blocker
+- [x] Full test suite and Java 27 build pass.
+- [x] Test-bot walkthrough is complete or the credential/availability blocker
   is explicitly documented.
 - [ ] Human approves the implementation handoff.

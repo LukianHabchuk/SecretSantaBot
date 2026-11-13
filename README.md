@@ -55,19 +55,34 @@ docker run --rm -it --entrypoint java secret-santa-bot:offline-tests -cp "/works
 ```
 
 In the simulator, each positive user ID represents a separate private chat.
-Type `help` for examples. A basic exchange is:
+Type `help` for examples. Use `as <user-id> <message>` to send messages and
+`click <button-number>` to press a button on that user's latest keyboard. Use
+`click <keyboard-number> <button-number>` to press a button on an earlier
+keyboard; the simulator labels each keyboard in its output.
 
-1. As user `100`, send `/claim demo-setup`, then `/open`.
-2. Copy the invite code printed in the local console.
-3. Use different IDs with `/join <invite-code> <name>` for each participant.
-4. As user `100`, send `/pair`; use `click <number>` to choose each pair.
-5. Send `/run` and inspect the simulated private assignment messages printed
-   locally.
+To walk through an exchange:
+
+1. As user `100`, send `/start`, press **Я організатор**, enter the local demo
+   setup code shown by `help`, and press **Відкрити реєстрацію**.
+2. Copy the invite code from the local output. For each participant, send
+   `/start`, press **Приєднатися за кодом**, enter the invite code, and confirm
+   or edit the name.
+3. During registration, a participant can press **Запросити пару** and select
+   another participant. The recipient accepts or declines from their own
+   simulated chat. An organizer can also manage pairs from **Змінити пари**.
+4. The organizer presses **Провести жеребкування**. Assignment messages are
+   printed locally by the simulator. To exercise a retry, run `fail <user-id>`
+   before the draw, then `recover <user-id>` and press the retry button.
+5. Each participant can confirm receipt from their assignment keyboard. After
+   all confirmations, the organizer can explicitly start a replacement draw or
+   clean up the exchange; cleanup preserves organizer access.
 
 The simulator uses a fake message sender, creates a fresh encryption key and
 temporary data directory for each run, and removes that directory on exit. It
 does not call Telegram or use `TELEGRAM_BOT_TOKEN`. This is a local behavior
-test, not a check of Telegram delivery or connectivity.
+test, not a check of Telegram delivery or connectivity. Simulated assignments
+are intentionally visible in the local terminal; do not use real participant
+data in a simulator session.
 
 ## Container pilot with a test bot
 
@@ -101,15 +116,34 @@ docker compose up --build -d
 docker compose logs -f bot
 ```
 
-In a private chat, send `/start` and use the buttons to claim organizer access
-or join an exchange. The organizer enters the setup code, opens registration,
-and shares the invite code; participants enter it and confirm or edit their
-Telegram first name. Use test accounts to verify the flow before any real
-exchange. The bot stores the organizer ID and encrypted exchange state in the
-persistent `bot-data` volume. Back up that volume and the matching
-`SECRET_SANTA_DATA_KEY` separately; the key must remain stable while an exchange
-or draw is active. The organizer can reset registration only after confirming
-and before starting a draw.
+In private chats, verify the full flow with test accounts before using a real
+exchange:
+
+1. Claim organizer access, open registration, and share the invite code.
+2. Join several test accounts, edit a participant name, and exercise a pair
+   request and recipient acceptance or decline.
+3. Check that the organizer's participant list shows pair/request status but
+   never assignment recipients. Close registration and run the draw; verify
+   each assignment is delivered privately.
+4. Confirm receipt from each assignment message, verify status, and test the
+   explicitly confirmed replacement draw. Confirm that old receipt controls
+   no longer apply, then confirm the new generation and test confirmed cleanup.
+5. Restart the container during a test exchange and verify the persisted state
+   resumes. Use only disposable test data.
+
+This repository's automated and offline tests do not connect to Telegram. A
+separate live test-bot walkthrough has not been run because no separate test bot
+credentials were provided. Complete the steps above with a dedicated test bot
+before relying on live Telegram delivery. Never paste credentials, keys, or
+private assignment details into source control, chat, or shared logs.
+
+The bot stores the organizer ID and encrypted exchange state in the persistent
+`bot-data` volume. Back up that volume and the matching
+`SECRET_SANTA_DATA_KEY` separately; the key must remain stable to read any
+backup and while an exchange or draw is active. Losing the key makes encrypted
+exchange data unrecoverable. Do not delete the volume as part of normal
+shutdown. The organizer can reset registration only after confirming and before
+starting a draw.
 
 Stop or remove the container without deleting persisted state:
 
@@ -136,10 +170,11 @@ or edit their Telegram first name before joining.
 
 The encrypted exchange snapshot in
 `<user.home>/.secretsanta-telegram-bot/exchange-state.enc` preserves an open
-registration and roster across restarts. The organizer can select **Скинути
+registration, roster, pair requests, draw assignments, delivery progress, and
+receipt confirmations across restarts. Use `/start` and the inline buttons for
+the organizer and participant flows. The organizer can select **Скинути
 обмін** and must confirm; this option is unavailable after registration closes
-for a draw. Organizer commands such as `/list`, `/pair`, and `/run` remain
-available in private chat while their button-based flows are added.
+for a draw.
 
 The legacy `/join <invite code> <display name>` command remains available.
 During registration, participants can use **Запросити пару** to privately ask
@@ -152,24 +187,32 @@ pairs. Re-pairing either person removes their previous pair, leaves former
 partners unpaired, and privately notifies everyone affected. The organizer's
 roster view shows pair/request status only, never assignment recipients.
 
-The organizer starts the draw with `/run`. The bot saves the complete encrypted
-draw before sending any assignments. If any private delivery fails, the
-organizer is told to retry with `/run`; the bot retries only undelivered messages
-using the same assignments. The encrypted draw and roster survive restarts and
-remain stored after delivery; each participant can confirm receipt from their
-private assignment message. The organizer's **Статус обміну** button shows
-delivery and confirmation progress without revealing recipients. After every
-participant confirms, the organizer can choose **Очистити обмін** and must
-explicitly confirm deletion; this removes exchange data but preserves organizer
-identity. After the current draw is fully delivered, the organizer can instead
-choose **Провести нове жеребкування** and explicitly confirm; the bot saves a
-new draw generation before privately notifying everyone of their replacement
+The bot saves the complete encrypted draw before sending any assignments. If a
+private delivery fails, the organizer can use **Повторити доставку**; the bot
+retries only undelivered messages using the same assignments. The encrypted
+draw and roster survive restarts and remain stored after delivery. Each
+participant can confirm receipt from their private assignment message. The
+organizer's **Статус обміну** button shows delivery and confirmation progress
+without revealing recipients. After every participant confirms, the organizer
+can choose **Очистити обмін** and must explicitly confirm deletion; this
+removes exchange data but preserves organizer identity.
+
+After the current draw is fully delivered, the organizer can instead choose
+**Провести нове жеребкування** and explicitly confirm. The bot persists a new
+draw generation before privately notifying everyone of their replacement
 recipient. Previous receipt buttons then become stale, and incomplete
-replacement delivery resumes with the same assignments using `/run`. Legacy
-encrypted `pending-draw.enc` data is migrated before normal bot operations.
-If Telegram accepted a message just before the process stopped, retrying may
-send that same assignment again. Run only one bot process against a data
-directory at a time.
+replacement delivery resumes with the same assignments. If Telegram accepted a
+message just before the process stopped, retrying may send that same assignment
+again.
+
+On startup, legacy encrypted `pending-draw.enc` data is migrated into the
+current exchange snapshot only when it can be decrypted with the configured
+data key and reconciled with the current roster and exchange state. The bot
+verifies the migrated snapshot before deleting the legacy file. A wrong key,
+invalid legacy data, or conflicting persisted exchange state prevents
+migration; preserve the data directory and key and resolve the conflict before
+restarting. Migration does not recover data if its key has been lost. Run only
+one bot process against a data directory at a time.
 
 ## Project layout
 
