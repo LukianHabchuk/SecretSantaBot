@@ -5,10 +5,114 @@ Feature requirements and current implementation status are tracked in the
 [spec](docs/SPEC-secret-santa-telegram-bot.md) and
 [task list](tasks/todo.md).
 
-## Requirements
+## Run your own bot with Docker
 
-- JDK 27
-- Maven 3.9 or later
+You need Docker with Compose, a Telegram account, and a machine with outbound
+internet access. Docker builds the application; you do not need to install Java
+or Maven on the host. Clone this repository or download it from GitHub, then
+open a terminal in the repository directory containing `compose.yaml`.
+
+1. Create a bot with [BotFather](https://t.me/BotFather) using `/newbot`.
+   Save the bot token and username privately. Use a separate test bot for your
+   first walkthrough.
+2. Copy `.env.example` to `.env`. Do not overwrite an existing `.env`: it may
+   contain the key needed to read your existing data. For example:
+
+   ```powershell
+   Copy-Item .env.example .env
+   ```
+
+   On Linux or macOS, use `cp .env.example .env` instead.
+3. Generate two **different** random values: one data key and one organizer
+   setup code. On PowerShell:
+
+   ```powershell
+   $bytes = New-Object byte[] 32
+   $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+   try {
+       $rng.GetBytes($bytes)
+       [Convert]::ToBase64String($bytes) # data key
+       $rng.GetBytes($bytes)
+       [Convert]::ToBase64String($bytes) # organizer setup code
+   } finally {
+       $rng.Dispose()
+   }
+   ```
+
+   On Linux or macOS with OpenSSL, run `openssl rand -base64 32` twice. Treat
+   both outputs as secrets. Never send the bot token or data key in a chat;
+   send the setup code only to your own bot's private chat when claiming
+   organizer access.
+4. Edit `.env` locally and replace all four placeholders:
+
+   - `TELEGRAM_BOT_TOKEN`: the token from BotFather.
+   - `TELEGRAM_BOT_USERNAME`: your bot's username.
+   - `SECRET_SANTA_SETUP_CODE`: the second generated value, used for the
+     one-time organizer claim; it must contain at least 32 characters.
+   - `SECRET_SANTA_DATA_KEY`: the first generated value, a Base64-encoded
+     32-byte key. Keep this value stable and back it up securely.
+
+   Do not commit `.env`, credentials, or keys. For a hosted deployment, use
+   your platform's secret manager instead of putting secrets in an image or
+   repository.
+
+   For a separate test installation, use a separate checkout, bot, and data
+   key. Add `COMPOSE_PROJECT_NAME=secretsanta-test` to its `.env` so its
+   volume is isolated from a live installation. Give the live installation a
+   different project name, for example `secretsanta-live`. Keep each name
+   stable: changing it makes Compose use a different volume.
+5. Build and start the bot:
+
+   ```powershell
+   docker compose up --build -d
+   docker compose ps
+   docker compose logs -f bot
+   ```
+
+   The build runs the application's tests. Press `Ctrl+C` to stop viewing logs
+   without stopping the bot. In Telegram, open your bot's private chat, send
+   `/start`, choose a language, select **I'm the organizer** or **Я
+   організатор**, and enter the setup code. The organizer can then open
+   registration and share the invite code.
+
+Before using a real exchange, complete the [live test-bot walkthrough](#live-test-bot-walkthrough)
+with disposable accounts and data.
+
+## Data, uptime, and backups
+
+The bot runs as an unprivileged user and connects to Telegram using outbound
+long polling; it exposes no inbound ports. **If the container stops, the bot
+stops responding.** To keep it available, run it on a machine or VPS that stays
+on, with Docker running and internet access. Configure Docker to start when the
+host boots; a sleeping or shut-down machine cannot run the bot. Compose uses
+`restart: unless-stopped`: it can restart a failed process, but a deliberately
+stopped container must be started again. A running container does not prove
+Telegram delivery is working; monitor logs and use external monitoring
+appropriate for your host.
+
+The Compose `bot-data` named volume holds the organizer ID, encrypted exchange
+and draw data, and encrypted language preferences. Stopping or removing the
+container normally does not delete this volume:
+
+```powershell
+docker compose stop       # Stop; keep containers and data
+docker compose up -d      # Start again, including after a normal down
+docker compose down        # Remove containers and network; keep data
+```
+
+Do **not** use `docker compose down --volumes` for normal shutdown: it deletes
+the volume and its data. Stop the bot before backing up the volume; see
+[Docker's volume backup and restore guide](https://docs.docker.com/engine/storage/volumes/#back-up-restore-or-migrate-data-volumes).
+Use `docker volume ls` to find the volume whose name ends in `_bot-data`,
+prefixed by the Compose project name. Preserve file ownership and permissions.
+Back up `SECRET_SANTA_DATA_KEY` separately and securely; without
+the matching key, encrypted data and preferences cannot be recovered. Restore
+the volume and its matching key together, and run only one bot process against
+that data directory. Test your backup and restore procedure with disposable data.
+
+To deploy an updated checkout, back up first and rebuild with
+`docker compose up --build -d`. Test an update with a separate bot before
+relying on it for a live exchange.
 
 ## Configuration
 
@@ -32,18 +136,18 @@ Telegram bot chats are not end-to-end encrypted between participants and the bot
 Telegram and the machine or service running the bot can access messages processed
 by the bot.
 
-## Commands
+## Local development
 
-Run these commands from the directory containing `pom.xml`:
+For development without Docker, install JDK 27 and Maven 3.9 or later. Set
+`JAVA_HOME` to the JDK and add its `bin` directory to `PATH`. Provide the
+configuration above as environment variables, then run these commands from the
+directory containing `pom.xml`:
 
 ```powershell
 mvn test
 mvn clean package
 mvn exec:java
 ```
-
-Set `JAVA_HOME` to a JDK 27 installation and ensure its `bin` directory is on
-`PATH` before running Maven.
 
 ## Manual offline simulator
 
@@ -86,37 +190,7 @@ test, not a check of Telegram delivery or connectivity. Simulated assignments
 are intentionally visible in the local terminal; do not use real participant
 data in a simulator session.
 
-## Container pilot with a test bot
-
-The Docker image builds and tests the application with Java 27, then runs it as
-an unprivileged user. It exposes no inbound ports; the bot connects to Telegram
-using outbound networking.
-
-Copy the example environment file and replace every placeholder with credentials
-for a **separate test bot**:
-
-```powershell
-Copy-Item .env.example .env
-$bytes = New-Object byte[] 32
-$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
-$rng.GetBytes($bytes)
-[Convert]::ToBase64String($bytes)
-$rng.Dispose()
-```
-
-Paste the generated Base64 value into `SECRET_SANTA_DATA_KEY` in `.env`. Generate
-a separate random value for `SECRET_SANTA_SETUP_CODE` (it must be at least 32
-characters), and set the test bot token and username there. Keep `.env` local;
-it is ignored by Git. Never send tokens or encryption keys in chat or commit
-them. For a hosted deployment, inject secrets through the platform's secret
-manager rather than storing them in a repository or image.
-
-Start the test bot and inspect its logs:
-
-```powershell
-docker compose up --build -d
-docker compose logs -f bot
-```
+## Live test-bot walkthrough
 
 In private chats, verify the full flow with test accounts before using a real
 exchange:
@@ -147,25 +221,7 @@ or button tokens. Draw activity is logged only when every assignment has been
 delivered; assignment delivery errors are still logged for troubleshooting.
 An attempt log does not mean the action succeeded.
 
-The bot stores the organizer ID, encrypted exchange state, and encrypted
-language preferences in the persistent `bot-data` volume. Back up that volume
-and the matching `SECRET_SANTA_DATA_KEY` separately; the key must remain stable
-to read any backup or retained encrypted data. Losing the key makes encrypted
-exchange data and preferences unrecoverable. Do not delete the volume as part of normal
-shutdown. The organizer can reset registration only after confirming and before
-starting a draw.
-
-Stop or remove the container without deleting persisted state:
-
-```powershell
-docker compose stop
-docker compose down
-```
-
-Do **not** use `docker compose down --volumes` for normal shutdown: it deletes
-the organizer ID and pending-draw data. Compose restarts the process after exit,
-but this app has no health endpoint or external error monitoring; watch the logs
-and configure platform-specific monitoring before relying on a hosted instance.
+The app has no health endpoint or built-in external error monitoring.
 
 ## Organizer setup
 
