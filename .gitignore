@@ -1,4 +1,5 @@
 target/
+.agents/
 .env
 .env.*
 !.env.example
