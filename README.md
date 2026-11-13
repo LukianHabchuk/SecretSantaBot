@@ -71,9 +71,9 @@ open a terminal in the repository directory containing `compose.yaml`.
 
    The build runs the application's tests. Press `Ctrl+C` to stop viewing logs
    without stopping the bot. In Telegram, open your bot's private chat, send
-   `/start`, choose a language, select **I'm the organizer** or **Я
-   організатор**, and enter the setup code. The organizer can then open
-   registration and share the invite code.
+   `/start`, choose **English**, select **I'm the organizer**, and enter the
+   setup code. The organizer can then open registration and share the invite
+   code.
 
 Before using a real exchange, complete the [live test-bot walkthrough](#live-test-bot-walkthrough)
 with disposable accounts and data.
@@ -167,18 +167,19 @@ keyboard; the simulator labels each keyboard in its output.
 
 To walk through an exchange:
 
-1. As user `100`, send `/start`, choose **Українська**, press **Я організатор**,
-   enter the local demo setup code shown by `help`, and press **Відкрити реєстрацію**.
-2. Copy the invite code from the local output. For each participant, send
-   `/start`, choose **Українська**, press **Приєднатися за кодом**, enter the
-   invite code, and confirm or edit the name. Alternatively, choose **English**
-   to try the English flow.
-3. During registration, a participant can press **Запросити пару** and select
-   another participant. The recipient accepts or declines from their own
-   simulated chat. An organizer can also manage pairs from **Змінити пари**.
-4. The organizer presses **Провести жеребкування**. Assignment messages are
-   printed locally by the simulator. To exercise a retry, run `fail <user-id>`
-   before the draw, then `recover <user-id>` and press the retry button.
+1. As user `100`, send `/start`, choose **English**, press **I'm the organizer**,
+   enter the local demo setup code shown by `help`, and press **Open registration**.
+2. Copy the invite code from the local output. For at least three participants
+   besides the organizer, send `/start`, choose **English**, press **Join with a
+   code**, enter the invite code, and confirm or edit the name.
+3. During registration, a participant can send `/start`, press **Request a
+   partner**, and select another participant. The recipient accepts or declines
+   from their own simulated chat. An organizer can also manage pairs from
+   **Manage pairs**.
+4. The organizer sends `/start` and presses **Run the draw**. Assignment
+   messages are printed locally by the simulator. To exercise a retry, run
+   `fail <user-id>` before the draw, then `recover <user-id>`, send `/start`
+   as the organizer, and press **Retry delivery**.
 5. Each participant can confirm receipt from their assignment keyboard. After
    all confirmations, the organizer can explicitly start a replacement draw or
    clean up the exchange; cleanup preserves organizer access.
@@ -226,26 +227,26 @@ The app has no health endpoint or built-in external error monitoring.
 ## Organizer setup
 
 Each user chooses English or Ukrainian on their first private `/start`. Use the
-**Language / Мова** button or `/language` to change it. The choice survives
-restarts and exchange cleanup; `/forgetlanguage` deletes that user's saved
-preference. The next `/start` asks again.
+language button or `/language` to change it. The choice survives restarts and
+exchange cleanup; `/forgetlanguage` deletes that user's saved preference. The
+next `/start` asks again. The button labels below assume English is selected.
 
-In a private chat with the bot, the organizer sends `/start`, selects **Я
-організатор**, and enters the one-time setup code. The bot stores only the
+In a private chat with the bot, the organizer sends `/start`, selects **I'm the
+organizer**, and enters the one-time setup code. The bot stores only the
 organizer's Telegram user ID in
 `<user.home>/.secretsanta-telegram-bot/organizer-id`; later claims are rejected.
 Once claimed, new `/start` menus no longer offer organizer setup to other users.
-The organizer then selects **Відкрити реєстрацію** and receives the invite code
+The organizer then selects **Open registration** and receives the invite code
 privately. The organizer is automatically included in the participant list.
-Participants select **Приєднатися за кодом**, enter the invite code, and confirm
+Participants select **Join with a code**, enter the invite code, and confirm
 or edit their Telegram first name before joining.
 
 The encrypted exchange snapshot in
 `<user.home>/.secretsanta-telegram-bot/exchange-state.enc` preserves an open
 registration, roster, pair requests, draw assignments, delivery progress, and
 receipt confirmations across restarts. Use `/start` and the inline buttons for
-the organizer and participant flows. The organizer can select **Скинути
-обмін** and must confirm; this option is unavailable after registration closes
+the organizer and participant flows. The organizer can select **Reset
+exchange** and must confirm; this option is unavailable after registration closes
 for a draw.
 
 The legacy `/join <invite code> <display name>` command remains available.
@@ -254,28 +255,28 @@ organizer commands in the organizer's private chat. Not every inline button
 has a slash-command equivalent. Before organizer setup, `/claim` is also listed.
 If updating the menu fails, the bot logs a
 warning and retries on `/start`; the normal buttons remain available.
-During registration, participants can use **Запросити пару** to privately ask
+During registration, participants can use **Request a partner** to privately ask
 another unpaired participant to pair. The recipient can accept or decline, and
 the requester can cancel; an unresolved request blocks registration closure and
-the draw. The **Мій запит** button shows the current request or confirmed pair.
-The organizer can review the roster and pending requests with **Учасники**, or
-use **Змінити пари** (also available through `/pair`) to create or replace
+the draw. The **My pair request** button shows the current request or confirmed pair.
+The organizer can review the roster and pending requests with **Participants**, or
+use **Manage pairs** (also available through `/pair`) to create or replace
 pairs. Re-pairing either person removes their previous pair, leaves former
 partners unpaired, and privately notifies everyone affected. The organizer's
 roster view shows pair/request status only, never assignment recipients.
 
 The bot saves the complete encrypted draw before sending any assignments. If a
-private delivery fails, the organizer can use **Повторити доставку**; the bot
+private delivery fails, the organizer can use **Retry delivery**; the bot
 retries only undelivered messages using the same assignments. The encrypted
 draw and roster survive restarts and remain stored after delivery. Each
 participant can confirm receipt from their private assignment message. The
-organizer's **Статус обміну** button shows delivery and confirmation progress
+organizer's **Exchange status** button shows delivery and confirmation progress
 without revealing recipients. After every participant confirms, the organizer
-can choose **Очистити обмін** and must explicitly confirm deletion; this
+can choose **Delete exchange** and must explicitly confirm deletion; this
 removes exchange data but preserves organizer identity.
 
 After the current draw is fully delivered, the organizer can instead choose
-**Провести нове жеребкування** and explicitly confirm. The bot persists a new
+**Run a new draw** and explicitly confirm. The bot persists a new
 draw generation before privately notifying everyone of their replacement
 recipient. Previous receipt buttons then become stale, and incomplete
 replacement delivery resumes with the same assignments. If Telegram accepted a

@@ -23,7 +23,7 @@
             <version>${telegrambots.version}</version>
         </dependency>
 
-        <!-- Logger для коректної роботи бібліотеки TelegramBots -->
+        <!-- Logger for the TelegramBots library -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-simple</artifactId>
