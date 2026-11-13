@@ -37,6 +37,12 @@ final class BotButtons {
 
     private BotButtons() {}
 
+    static InlineKeyboardMarkup languageSelection() {
+        return keyboard(List.of(List.of(
+                button("English", "language:en"),
+                button("Українська", "language:uk"))));
+    }
+
     static InlineKeyboardMarkup participantStartMenu(boolean organizerAvailable) {
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
         if (organizerAvailable) {
