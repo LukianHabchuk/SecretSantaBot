@@ -309,6 +309,31 @@ final class ExchangeService {
         organizerService.closeRegistration();
     }
 
+    synchronized void replaceDraw(List<ExchangeState.Assignment> assignments)
+            throws IOException {
+        if (!canReplaceDraw()) {
+            throw new IllegalStateException(
+                    "A replacement draw requires every current assignment to be delivered.");
+        }
+        persist(new ExchangeState(
+                ExchangeState.Phase.DELIVERING,
+                null,
+                state.participants(),
+                List.of(),
+                state.drawGeneration() + 1,
+                assignments,
+                Set.of(),
+                Set.of()));
+    }
+
+    synchronized boolean canReplaceDraw() {
+        Set<Long> giverIds = state.assignments().stream()
+                .map(ExchangeState.Assignment::giverId)
+                .collect(java.util.stream.Collectors.toSet());
+        return state.phase() == ExchangeState.Phase.AWAITING_CONFIRMATIONS
+                && state.deliveredUserIds().equals(giverIds);
+    }
+
     synchronized void markAssignmentDelivered(long giverId) throws IOException {
         if (state.phase() != ExchangeState.Phase.DELIVERING
                 || state.assignments().stream().noneMatch(

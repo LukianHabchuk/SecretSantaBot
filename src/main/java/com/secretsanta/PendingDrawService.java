@@ -94,38 +94,63 @@ final class PendingDrawService {
                 throw new IllegalStateException("Registration must be open before assignment.");
             }
 
-            Map<Long, String> participantNames = new LinkedHashMap<>();
-            state.participants().forEach(participant ->
-                    participantNames.put(participant.userId(), participant.name()));
-            int failedDeliveries = 0;
-            for (ExchangeState.Assignment assignment : state.assignments()) {
-                if (state.deliveredUserIds().contains(assignment.giverId())) {
-                    continue;
-                }
-
-                try {
-                    telegramMessenger.sendMessage(
-                            assignment.giverId(),
-                            assignmentMessage(participantNames.get(assignment.receiverId())),
-                            BotButtons.assignmentReceived(state.drawGeneration()));
-                } catch (TelegramApiException exception) {
-                    failedDeliveries++;
-                    LOGGER.log(
-                            Level.WARNING,
-                            "A Secret Santa assignment remains pending after Telegram delivery failed.",
-                            exception);
-                    continue;
-                }
-
-                exchangeService.markAssignmentDelivered(assignment.giverId());
-                state = exchangeService.state();
-            }
-
-            if (state.phase() == ExchangeState.Phase.AWAITING_CONFIRMATIONS) {
-                return new Result(Status.COMPLETED, 0);
-            }
-            return new Result(Status.PENDING, failedDeliveries);
+            return deliverCurrentDraw(state, state.drawGeneration() > 1);
         }
+    }
+
+    Result replaceDraw() throws IOException {
+        try (PendingDrawStore.LockHandle ignored = store.acquireDrawLock()) {
+            if (!exchangeService.canReplaceDraw()) {
+                throw new IllegalStateException(
+                        "A replacement draw requires all current assignments to be delivered.");
+            }
+            List<SecretSantaBot.Participant> participants = exchangeService.participants();
+            Map<SecretSantaBot.Participant, SecretSantaBot.Participant> assignments =
+                    AssignmentGenerator.generate(participants);
+            List<ExchangeState.Assignment> persistedAssignments = assignments.entrySet()
+                    .stream()
+                    .map(entry -> new ExchangeState.Assignment(
+                            entry.getKey().chatId(), entry.getValue().chatId()))
+                    .toList();
+            exchangeService.replaceDraw(persistedAssignments);
+            return deliverCurrentDraw(exchangeService.state(), true);
+        }
+    }
+
+    private Result deliverCurrentDraw(ExchangeState state, boolean replacement)
+            throws IOException {
+        Map<Long, String> participantNames = new LinkedHashMap<>();
+        state.participants().forEach(participant ->
+                participantNames.put(participant.userId(), participant.name()));
+        int failedDeliveries = 0;
+        for (ExchangeState.Assignment assignment : state.assignments()) {
+            if (state.deliveredUserIds().contains(assignment.giverId())) {
+                continue;
+            }
+
+            try {
+                telegramMessenger.sendMessage(
+                        assignment.giverId(),
+                        assignmentMessage(
+                                participantNames.get(assignment.receiverId()), replacement),
+                        BotButtons.assignmentReceived(state.drawGeneration()));
+            } catch (TelegramApiException exception) {
+                failedDeliveries++;
+                LOGGER.log(
+                        Level.WARNING,
+                        "A Secret Santa assignment remains pending after Telegram delivery failed.",
+                        exception);
+                continue;
+            }
+
+            exchangeService.markAssignmentDelivered(assignment.giverId());
+            state = exchangeService.state();
+        }
+
+        if (state.phase() == ExchangeState.Phase.AWAITING_CONFIRMATIONS) {
+            return new Result(Status.COMPLETED, 0);
+        }
+        return new Result(Status.PENDING, failedDeliveries);
     }
 
     private void migrateLegacyDraw() {
@@ -140,8 +165,10 @@ final class PendingDrawService {
         }
     }
 
-    private static String assignmentMessage(String receiverName) {
-        return "🎁 **Жеребкування Таємного Санти завершено!** 🎅\n\n"
+    private static String assignmentMessage(String receiverName, boolean replacement) {
+        return (replacement
+                        ? "🔄 **Жеребкування оновлено!** 🎅\n\n"
+                        : "🎁 **Жеребкування Таємного Санти завершено!** 🎅\n\n")
                 + "Твоя ціль — купити подарунок для: **"
                 + escapeMarkdown(receiverName)
                 + "** 🎉\n\n"

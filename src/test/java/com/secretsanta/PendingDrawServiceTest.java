@@ -243,6 +243,118 @@ class PendingDrawServiceTest {
     }
 
     @Test
+    void replacementDrawIncrementsGenerationAndClearsPreviousConfirmations() throws Exception {
+        OrganizerService organizerService = createOrganizerService();
+        ExchangeService exchangeService = createExchangeWithThreeParticipants(organizerService);
+        RecordingMessenger messenger = new RecordingMessenger(null);
+        PendingDrawService service = new PendingDrawService(
+                new PendingDrawStore(dataDirectory, KEY),
+                exchangeService,
+                organizerService,
+                messenger);
+
+        assertEquals(PendingDrawService.Status.COMPLETED, service.run().status());
+        ExchangeState originalDraw = exchangeService.state();
+        for (ExchangeState.Participant participant : originalDraw.participants()) {
+            exchangeService.confirmReceipt(participant.userId(), originalDraw.drawGeneration());
+        }
+
+        assertEquals(PendingDrawService.Status.COMPLETED, service.replaceDraw().status());
+
+        ExchangeState replacement = exchangeService.state();
+        assertEquals(originalDraw.drawGeneration() + 1, replacement.drawGeneration());
+        assertEquals(ExchangeState.Phase.AWAITING_CONFIRMATIONS, replacement.phase());
+        assertTrue(replacement.confirmedUserIds().isEmpty());
+        assertEquals(
+                replacement.participants().stream()
+                        .map(ExchangeState.Participant::userId)
+                        .collect(java.util.stream.Collectors.toSet()),
+                replacement.deliveredUserIds());
+        List<SentMessage> replacementMessages = messenger.messages().subList(4, 8);
+        assertEquals(4, replacementMessages.size());
+        for (ExchangeState.Assignment assignment : replacement.assignments()) {
+            SentMessage message = replacementMessages.stream()
+                    .filter(sent -> sent.chatId() == assignment.giverId())
+                    .findFirst()
+                    .orElseThrow();
+            String receiverName = exchangeService.participant(assignment.receiverId())
+                    .orElseThrow()
+                    .name();
+            assertTrue(message.text().contains(receiverName));
+            replacement.participants().stream()
+                    .filter(participant -> participant.userId() != assignment.receiverId())
+                    .forEach(participant -> assertFalse(message.text().contains(participant.name())));
+            assertTrue(message.callbackData().contains(
+                    BotButtons.DRAW_RECEIVED_PREFIX + replacement.drawGeneration()));
+        }
+    }
+
+    @Test
+    void replacementDrawIsRejectedWhileDeliveryIsIncomplete() throws Exception {
+        OrganizerService organizerService = createOrganizerService();
+        ExchangeService exchangeService = createExchangeWithThreeParticipants(organizerService);
+        RecordingMessenger messenger = new RecordingMessenger(202L);
+        PendingDrawService service = new PendingDrawService(
+                new PendingDrawStore(dataDirectory, KEY),
+                exchangeService,
+                organizerService,
+                messenger);
+
+        assertEquals(PendingDrawService.Status.PENDING, service.run().status());
+        int messageCountBeforeReplacement = messenger.messages().size();
+
+        assertThrows(IllegalStateException.class, service::replaceDraw);
+
+        assertEquals(messageCountBeforeReplacement, messenger.messages().size());
+        assertEquals(ExchangeState.Phase.DELIVERING, exchangeService.state().phase());
+    }
+
+    @Test
+    void replacementDeliveryResumesPersistedGenerationAfterRestart() throws Exception {
+        OrganizerService organizerService = createOrganizerService();
+        ExchangeService exchangeService = createExchangeWithThreeParticipants(organizerService);
+        RecordingMessenger firstMessenger = new RecordingMessenger(null);
+        PendingDrawService service = new PendingDrawService(
+                new PendingDrawStore(dataDirectory, KEY),
+                exchangeService,
+                organizerService,
+                firstMessenger);
+        assertEquals(PendingDrawService.Status.COMPLETED, service.run().status());
+
+        firstMessenger.failChatId = 202L;
+        PendingDrawService.Result replacementResult = service.replaceDraw();
+        ExchangeState persistedReplacement = exchangeService.state();
+
+        assertEquals(PendingDrawService.Status.PENDING, replacementResult.status());
+        assertEquals(1, replacementResult.failedDeliveries());
+        assertEquals(2, persistedReplacement.drawGeneration());
+        assertEquals(ExchangeState.Phase.DELIVERING, persistedReplacement.phase());
+        assertTrue(persistedReplacement.confirmedUserIds().isEmpty());
+
+        OrganizerService restartedOrganizerService = createOrganizerService();
+        ExchangeService restartedExchangeService =
+                createExchangeService(restartedOrganizerService);
+        RecordingMessenger retryMessenger = new RecordingMessenger(null);
+        PendingDrawService restartedService = new PendingDrawService(
+                new PendingDrawStore(dataDirectory, KEY),
+                restartedExchangeService,
+                restartedOrganizerService,
+                retryMessenger);
+
+        assertEquals(
+                PendingDrawService.Status.COMPLETED,
+                restartedService.run().status());
+
+        ExchangeState completedReplacement = restartedExchangeService.state();
+        assertEquals(persistedReplacement.assignments(), completedReplacement.assignments());
+        assertEquals(persistedReplacement.drawGeneration(), completedReplacement.drawGeneration());
+        assertEquals(1, retryMessenger.messages().size());
+        assertTrue(retryMessenger.messages().getFirst().text().contains("Жеребкування оновлено"));
+        assertTrue(retryMessenger.messages().getFirst().callbackData().contains(
+                BotButtons.DRAW_RECEIVED_PREFIX + completedReplacement.drawGeneration()));
+    }
+
+    @Test
     void migratesLegacyDrawIdempotentlyBeforeRemovingLegacyFile() throws Exception {
         OrganizerService organizerService = createOrganizerService();
         ExchangeService exchangeService = createExchangeWithThreeParticipants(organizerService);
@@ -365,7 +477,7 @@ class PendingDrawServiceTest {
         return new ExchangeService(organizerService, new ExchangeStore(dataDirectory, KEY));
     }
 
-    private record SentMessage(long chatId, String text) {}
+    private record SentMessage(long chatId, String text, String callbackData) {}
 
     private static final class RecordingMessenger implements TelegramMessenger {
         private final List<SentMessage> sentMessages = new ArrayList<>();
@@ -383,7 +495,14 @@ class PendingDrawServiceTest {
         public void sendMessage(
                 long chatId, String text, InlineKeyboardMarkup keyboard)
                 throws TelegramApiException {
-            sentMessages.add(new SentMessage(chatId, text));
+            sentMessages.add(new SentMessage(
+                    chatId,
+                    text,
+                    keyboard.getKeyboard().stream()
+                            .flatMap(List::stream)
+                            .map(button -> button.getCallbackData())
+                            .findFirst()
+                            .orElse("")));
             if (failChatId != null && failChatId == chatId) {
                 throw new TelegramApiException("Simulated delivery failure.");
             }
