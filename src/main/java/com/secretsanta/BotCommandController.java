@@ -51,6 +51,19 @@ final class BotCommandController {
         String command = normalizeCommand(parts[0]);
         String arguments = parts.length > 1 ? parts[1].strip() : "";
         Command context = new Command(chatId, userId, firstName, arguments, privateChat);
+        String action = switch (command) {
+            case "/start" -> "command_start";
+            case "/claim" -> "command_claim";
+            case "/open" -> "command_open";
+            case "/join" -> "command_join";
+            case "/register" -> "command_register";
+            case "/list" -> "command_list";
+            case "/pair" -> "command_pair";
+            default -> null;
+        };
+        if (action != null) {
+            LOGGER.info(BotLogMessages.ACTION_ATTEMPTED + action);
+        }
         commands.getOrDefault(command, this::showUnknownCommand).accept(context);
     }
 
@@ -117,6 +130,9 @@ final class BotCommandController {
         try {
             ExchangeService.RegistrationResult result = exchangeService.register(
                     command.userId(), arguments[0], arguments[1]);
+            if (result == ExchangeService.RegistrationResult.REGISTERED) {
+                buttonController.notifyOrganizerOfJoin(command.userId());
+            }
             responder.sendText(command.chatId(), registrationMessages.get(result));
         } catch (IOException exception) {
             LOGGER.log(Level.SEVERE, BotLogMessages.REGISTRATION_PERSIST_FAILED, exception);

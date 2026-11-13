@@ -148,6 +148,7 @@ final class PendingDrawService {
         }
 
         if (state.phase() == ExchangeState.Phase.AWAITING_CONFIRMATIONS) {
+            LOGGER.info(BotLogMessages.ASSIGNMENT_DELIVERY_COMPLETED);
             return new Result(Status.COMPLETED, 0);
         }
         return new Result(Status.PENDING, failedDeliveries);

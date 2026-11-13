@@ -9,6 +9,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Handler;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.telegram.telegrambots.meta.api.objects.Chat;
@@ -25,6 +28,50 @@ class SecretSantaBotTest {
 
     @TempDir
     Path dataDirectory;
+
+    @Test
+    void logsOnlySafeActionLabelsWithoutInputOrAssignmentAttempts() throws Exception {
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(createService(), messenger);
+        List<String> events = new ArrayList<>();
+        Handler handler = new Handler() {
+            @Override
+            public void publish(LogRecord record) {
+                if (record.getLevel() == java.util.logging.Level.INFO) {
+                    events.add(record.getMessage());
+                }
+            }
+            @Override public void flush() {}
+            @Override public void close() {}
+        };
+        Logger commandLogger = Logger.getLogger(BotCommandController.class.getName());
+        Logger buttonLogger = Logger.getLogger(BotButtonController.class.getName());
+        commandLogger.addHandler(handler);
+        buttonLogger.addHandler(handler);
+        try {
+            bot.onUpdateReceived(update(201L, 201L, "private", "/claim sensitive-setup-code"));
+            bot.onUpdateReceived(callbackUpdate("onboarding:join", 201L, 201L, "join", "Alex"));
+            bot.onUpdateReceived(update(201L, 201L, "private", "sensitive-invite", "Alex"));
+            bot.onUpdateReceived(callbackUpdate(
+                    "onboarding:join:confirm:sensitive-token", 201L, 201L, "confirm", "Alex"));
+            bot.onUpdateReceived(update(201L, 201L, "private", "/run"));
+            bot.onUpdateReceived(callbackUpdate(
+                    "organizer:run-draw", 201L, 201L, "draw", "Alex"));
+            bot.onUpdateReceived(update(201L, 201L, "private", "/unknown-sensitive"));
+
+            assertTrue(events.contains("action_attempted command_claim"));
+            assertTrue(events.contains("action_attempted button_join"));
+            assertTrue(events.contains("action_attempted input_invite_code"));
+            assertTrue(events.contains("action_attempted button_join_confirm"));
+            assertTrue(events.stream().noneMatch(event ->
+                    event.contains("sensitive") || event.contains("Alex")
+                            || event.contains("201") || event.contains("run")
+                            || event.contains("draw")));
+        } finally {
+            commandLogger.removeHandler(handler);
+            buttonLogger.removeHandler(handler);
+        }
+    }
 
     @Test
     void participantRetainsRegistrationDetails() {
@@ -164,6 +211,71 @@ class SecretSantaBotTest {
         assertTrue(exchangeState.participants().stream()
                 .anyMatch(participant -> participant.userId() == 201L
                         && participant.name().equals("Alex Example")));
+    }
+
+    @Test
+    void organizerIsNotifiedPrivatelyOnceWhenParticipantJoinsThroughButtons() throws Exception {
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(createService(), messenger);
+        String inviteCode = openRegistrationWithButtons(bot, messenger);
+        int beforeJoin = messenger.sentMessages.size();
+
+        bot.onUpdateReceived(callbackUpdate(
+                "onboarding:join", 201L, 201L, "join", "Alex"));
+        bot.onUpdateReceived(update(201L, 201L, "private", inviteCode, "Alex"));
+        String editCallback = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Змінити ім'я");
+        bot.onUpdateReceived(callbackUpdate(editCallback, 201L, 201L, "edit", "Alex"));
+        bot.onUpdateReceived(update(201L, 201L, "private", " Alex_* ", "Alex"));
+        String confirmCallback = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Підтвердити ім'я");
+        bot.onUpdateReceived(callbackUpdate(confirmCallback, 201L, 201L, "confirm", "Alex"));
+        bot.onUpdateReceived(callbackUpdate(confirmCallback, 201L, 201L, "repeat", "Alex"));
+
+        List<SentMessage> organizerMessages = messenger.sentMessages.subList(
+                        beforeJoin, messenger.sentMessages.size()).stream()
+                .filter(message -> message.chatId() == 100L)
+                .toList();
+        assertEquals(1, organizerMessages.size());
+        assertTrue(organizerMessages.getFirst().text().contains("Alex\\_\\*"));
+        assertTrue(messenger.sentMessages.stream()
+                .noneMatch(message -> message.chatId() != 100L
+                        && message.text().contains("Alex\\_\\*")
+                        && message.text().contains("приєднався")));
+    }
+
+    @Test
+    void legacyJoinNotifiesOrganizerOnlyForSuccessfulRegistration() throws Exception {
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(createService(), messenger);
+        String inviteCode = openRegistration(bot, messenger);
+        int beforeJoin = messenger.sentMessages.size();
+
+        bot.onUpdateReceived(update(201L, 201L, "private", "/join invalid Alex"));
+        bot.onUpdateReceived(update(201L, 201L, "private", "/join " + inviteCode + " Alex"));
+        bot.onUpdateReceived(update(201L, 201L, "private", "/join " + inviteCode + " Alex"));
+
+        List<SentMessage> organizerMessages = messenger.sentMessages.subList(
+                        beforeJoin, messenger.sentMessages.size()).stream()
+                .filter(message -> message.chatId() == 100L)
+                .toList();
+        assertEquals(1, organizerMessages.size());
+        assertTrue(organizerMessages.getFirst().text().contains("Alex"));
+    }
+
+    @Test
+    void organizerNotificationFailureDoesNotUndoParticipantRegistration() throws Exception {
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(createService(), messenger);
+        String inviteCode = openRegistration(bot, messenger);
+        messenger.failChatId = 100L;
+
+        bot.onUpdateReceived(update(201L, 201L, "private", "/join " + inviteCode + " Alex"));
+
+        assertTrue(messenger.sentMessages.getLast().text().contains("приєднався"));
+        assertEquals(201L, messenger.sentMessages.getLast().chatId());
+        ExchangeState state = new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow();
+        assertTrue(state.participants().stream().anyMatch(participant -> participant.userId() == 201L));
     }
 
     @Test
@@ -438,8 +550,11 @@ class SecretSantaBotTest {
                 201L, 201L, "private", "/join " + inviteCode + " Different Name"));
         bot.onUpdateReceived(update(100L, 100L, "private", "/list"));
 
-        assertTrue(messenger.sentMessages.get(2).text().contains("приєднався"));
-        assertTrue(messenger.sentMessages.get(3).text().contains("вже зареєстрований"));
+        List<SentMessage> participantMessages = messenger.sentMessages.stream()
+                .filter(message -> message.chatId() == 201L)
+                .toList();
+        assertTrue(participantMessages.get(0).text().contains("приєднався"));
+        assertTrue(participantMessages.get(1).text().contains("вже зареєстрований"));
         String roster = messenger.sentMessages.getLast().text();
         assertTrue(roster.contains("Alex\\_\\*\\[Example]"));
         assertFalse(roster.contains("Different Name"));

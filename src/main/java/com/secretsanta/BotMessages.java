@@ -206,6 +206,10 @@ final class BotMessages {
         return "Приєднатися до обміну як **" + escapedName + "**?";
     }
 
+    static String participantJoined(String name) {
+        return "🎉 **" + escapeMarkdown(name) + "** приєднався до обміну.";
+    }
+
     static String registrationOpened(String inviteCode) {
         return "✅ Реєстрацію відкрито.\nЗапрошувальний код: `" + inviteCode + "`";
     }

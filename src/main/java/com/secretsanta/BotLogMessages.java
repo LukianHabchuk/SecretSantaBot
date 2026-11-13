@@ -4,6 +4,9 @@ final class BotLogMessages {
     static final String ORGANIZER_CLAIM_PERSIST_FAILED = "Could not persist organizer claim.";
     static final String ORGANIZER_STATE_READ_FAILED = "Could not read organizer state.";
     static final String REGISTRATION_PERSIST_FAILED = "Could not persist participant registration.";
+    static final String JOIN_NOTIFICATION_FAILED = "Could not notify organizer of participant registration.";
+    static final String ACTION_ATTEMPTED = "action_attempted ";
+    static final String ASSIGNMENT_DELIVERY_COMPLETED = "assignment_delivery_completed";
     static final String PENDING_DRAW_CHECK_FAILED =
             "Could not check pending draw before pairing.";
     static final String ONBOARDING_STATE_READ_FAILED =

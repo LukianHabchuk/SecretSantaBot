@@ -137,6 +137,11 @@ final class BotButtonController {
         if (pendingInput == null) {
             return;
         }
+        LOGGER.info(BotLogMessages.ACTION_ATTEMPTED + switch (pendingInput) {
+            case SETUP_CODE -> "input_setup_code";
+            case INVITE_CODE -> "input_invite_code";
+            case JOIN_NAME -> "input_join_name";
+        });
         inputHandlers.get(pendingInput).accept(new InputContext(userId, firstName), input);
     }
 
@@ -187,6 +192,10 @@ final class BotButtonController {
         }
 
         String data = callback.getData();
+        String action = callbackAction(data);
+        if (action != null) {
+            LOGGER.info(BotLogMessages.ACTION_ATTEMPTED + action);
+        }
         if (data != null && data.startsWith(BotButtons.ONBOARDING_PREFIX)) {
             handleOnboardingCallback(callback);
             return;
@@ -225,6 +234,39 @@ final class BotButtonController {
             return;
         }
         responder.answerCallback(callback.getId(), BotMessages.STALE_BUTTON);
+    }
+
+    private static String callbackAction(String data) {
+        if (data == null) {
+            return null;
+        }
+        String fixedAction = switch (data) {
+            case BotButtons.CLAIM -> "button_claim";
+            case BotButtons.JOIN -> "button_join";
+            case BotButtons.OPEN -> "button_open";
+            case BotButtons.RESET -> "button_reset";
+            case BotButtons.ORGANIZER_PAIR -> "button_pair";
+            case BotButtons.ORGANIZER_ROSTER -> "button_roster";
+            case BotButtons.ORGANIZER_CLEANUP -> "button_cleanup";
+            case BotButtons.PAIR_REQUEST_CHOOSE -> "button_pair_request";
+            case BotButtons.PAIR_REQUEST_STATUS -> "button_pair_status";
+            default -> null;
+        };
+        if (fixedAction != null) {
+            return fixedAction;
+        }
+        if (data.startsWith(BotButtons.JOIN_CONFIRM_PREFIX)) return "button_join_confirm";
+        if (data.startsWith(BotButtons.JOIN_EDIT_PREFIX)) return "button_join_edit";
+        if (data.startsWith(BotButtons.RESET_CONFIRM_PREFIX)) return "button_reset_confirm";
+        if (data.startsWith(BotButtons.RESET_CANCEL_PREFIX)) return "button_reset_cancel";
+        if (data.startsWith(BotButtons.CLEANUP_CONFIRM_PREFIX)) return "button_cleanup_confirm";
+        if (data.startsWith(BotButtons.CLEANUP_CANCEL_PREFIX)) return "button_cleanup_cancel";
+        if (data.startsWith(BotButtons.PAIR_REQUEST_TARGET_PREFIX)) return "button_pair_target";
+        if (data.startsWith(BotButtons.PAIR_REQUEST_ACCEPT_PREFIX)) return "button_pair_accept";
+        if (data.startsWith(BotButtons.PAIR_REQUEST_DECLINE_PREFIX)) return "button_pair_decline";
+        if (data.startsWith(BotButtons.PAIR_REQUEST_CANCEL_PREFIX)) return "button_pair_cancel";
+        if (data.startsWith(BotButtons.PAIR_PREFIX)) return "button_pair_selection";
+        return null;
     }
 
     private void confirmDrawReceipt(CallbackQuery callback) {
@@ -501,11 +543,26 @@ final class BotButtonController {
         try {
             ExchangeService.RegistrationResult result = exchangeService.register(
                     userId, pendingJoin.inviteCode(), pendingJoin.suggestedName());
+            if (result == ExchangeService.RegistrationResult.REGISTERED) {
+                notifyOrganizerOfJoin(userId);
+            }
             registrationActions.get(result).accept(new JoinAttempt(userId, callbackId));
         } catch (IOException exception) {
             LOGGER.log(Level.SEVERE, BotLogMessages.REGISTRATION_PERSIST_FAILED, exception);
             responder.answerCallback(callbackId, BotMessages.REGISTRATION_FAILED_CALLBACK);
             responder.sendText(userId, BotMessages.REGISTRATION_FAILED);
+        }
+    }
+
+    void notifyOrganizerOfJoin(long userId) {
+        try {
+            long organizerId = organizerService.organizerId()
+                    .orElseThrow(() -> new IOException("Organizer identity is unavailable."));
+            SecretSantaBot.Participant participant = exchangeService.participant(userId)
+                    .orElseThrow(() -> new IOException("Registered participant is unavailable."));
+            responder.sendText(organizerId, BotMessages.participantJoined(participant.name()));
+        } catch (IOException exception) {
+            LOGGER.log(Level.SEVERE, BotLogMessages.JOIN_NOTIFICATION_FAILED, exception);
         }
     }
 

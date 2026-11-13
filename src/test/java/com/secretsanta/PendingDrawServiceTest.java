@@ -10,6 +10,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.logging.Handler;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
@@ -20,6 +23,38 @@ class PendingDrawServiceTest {
 
     @TempDir
     Path dataDirectory;
+
+    @Test
+    void logsCompletionOnlyAfterAllDeliveriesAndOnlyOnce() throws Exception {
+        OrganizerService organizerService = createOrganizerService();
+        ExchangeService exchangeService = createExchangeWithThreeParticipants(organizerService);
+        RecordingMessenger messenger = new RecordingMessenger(202L);
+        PendingDrawService service = new PendingDrawService(
+                new PendingDrawStore(dataDirectory, KEY), exchangeService, organizerService, messenger);
+        List<String> infoMessages = new ArrayList<>();
+        Logger logger = Logger.getLogger(PendingDrawService.class.getName());
+        Handler handler = new Handler() {
+            @Override
+            public void publish(LogRecord record) {
+                if (record.getLevel() == java.util.logging.Level.INFO) {
+                    infoMessages.add(record.getMessage());
+                }
+            }
+            @Override public void flush() {}
+            @Override public void close() {}
+        };
+        logger.addHandler(handler);
+        try {
+            assertEquals(PendingDrawService.Status.PENDING, service.run().status());
+            assertTrue(infoMessages.isEmpty());
+            messenger.failChatId = null;
+            assertEquals(PendingDrawService.Status.COMPLETED, service.run().status());
+            assertEquals(PendingDrawService.Status.COMPLETED, service.run().status());
+            assertEquals(List.of("assignment_delivery_completed"), infoMessages);
+        } finally {
+            logger.removeHandler(handler);
+        }
+    }
 
     @Test
     void retriesThePersistedDrawAfterRestartWithoutRedrawing() throws Exception {

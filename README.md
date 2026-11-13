@@ -121,7 +121,8 @@ exchange:
 
 1. Claim organizer access, open registration, and share the invite code.
 2. Join several test accounts, edit a participant name, and exercise a pair
-   request and recipient acceptance or decline.
+   request and recipient acceptance or decline. Each successful join sends the
+   organizer a private notification with the participant's chosen name.
 3. Check that the organizer's participant list shows pair/request status but
    never assignment recipients. Close registration and run the draw; verify
    each assignment is delivered privately.
@@ -136,6 +137,13 @@ separate live test-bot walkthrough has not been run because no separate test bot
 credentials were provided. Complete the steps above with a dedicated test bot
 before relying on live Telegram delivery. Never paste credentials, keys, or
 private assignment details into source control, chat, or shared logs.
+
+Join notifications are best-effort: if Telegram delivery fails, registration
+still succeeds, the failure is logged, and the organizer can check the roster.
+New action logs identify attempts using fixed labels without names, IDs, codes,
+or button tokens. Draw activity is logged only when every assignment has been
+delivered; assignment delivery errors are still logged for troubleshooting.
+An attempt log does not mean the action succeeded.
 
 The bot stores the organizer ID and encrypted exchange state in the persistent
 `bot-data` volume. Back up that volume and the matching
