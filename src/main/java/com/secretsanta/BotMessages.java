@@ -208,16 +208,40 @@ final class BotMessages {
         return "Приєднатися до обміну як **" + escapedName + "**?";
     }
 
+    static String joinConfirmation(BotLanguage language, String escapedName) {
+        return language == BotLanguage.ENGLISH
+                ? "Join the exchange as **" + escapedName + "**?"
+                : joinConfirmation(escapedName);
+    }
+
     static String participantJoined(String name) {
         return "🎉 **" + escapeMarkdown(name) + "** приєднався до обміну.";
+    }
+
+    static String participantJoined(BotLanguage language, String name) {
+        return language == BotLanguage.ENGLISH
+                ? "🎉 **" + escapeMarkdown(name) + "** joined the exchange."
+                : participantJoined(name);
     }
 
     static String registrationOpened(String inviteCode) {
         return "✅ Реєстрацію відкрито.\nЗапрошувальний код: `" + inviteCode + "`";
     }
 
+    static String registrationOpened(BotLanguage language, String inviteCode) {
+        return language == BotLanguage.ENGLISH
+                ? "✅ Registration is open.\nInvitation code: `" + inviteCode + "`"
+                : registrationOpened(inviteCode);
+    }
+
     static String partnerSelection(String escapedName) {
         return "Обери партнера для " + escapedName + ":";
+    }
+
+    static String partnerSelection(BotLanguage language, String escapedName) {
+        return language == BotLanguage.ENGLISH
+                ? "Choose a partner for " + escapedName + ":"
+                : partnerSelection(escapedName);
     }
 
     static String openPendingDeliveries(int count) {
@@ -234,12 +258,39 @@ final class BotMessages {
         };
     }
 
+    static String drawResult(BotLanguage language, PendingDrawService.Result result) {
+        if (language != BotLanguage.ENGLISH) {
+            return drawResult(result);
+        }
+        return switch (result.status()) {
+            case TOO_FEW_PARTICIPANTS -> EnglishMessages.translate(RUN_TOO_FEW);
+            case PENDING -> englishPendingDeliveries(result.failedDeliveries());
+            case COMPLETED -> EnglishMessages.translate(RUN_COMPLETED);
+        };
+    }
+
     static String replacementDrawResult(PendingDrawService.Result result) {
         return switch (result.status()) {
             case TOO_FEW_PARTICIPANTS -> RUN_TOO_FEW;
             case PENDING -> openPendingDeliveries(result.failedDeliveries());
             case COMPLETED -> REPLACEMENT_COMPLETED;
         };
+    }
+
+    static String replacementDrawResult(BotLanguage language, PendingDrawService.Result result) {
+        if (language != BotLanguage.ENGLISH) {
+            return replacementDrawResult(result);
+        }
+        return switch (result.status()) {
+            case TOO_FEW_PARTICIPANTS -> EnglishMessages.translate(RUN_TOO_FEW);
+            case PENDING -> englishPendingDeliveries(result.failedDeliveries());
+            case COMPLETED -> EnglishMessages.translate(REPLACEMENT_COMPLETED);
+        };
+    }
+
+    private static String englishPendingDeliveries(int count) {
+        return "⚠️ Could not deliver results to " + count
+                + " participants. The draw was saved; retry `/run` to deliver the same assignments.";
     }
 
     static String replacementDrawCallback(PendingDrawService.Result result) {
@@ -251,23 +302,29 @@ final class BotMessages {
     }
 
     static String drawStatus(ExchangeState state) {
+        return drawStatus(BotLanguage.UKRAINIAN, state);
+    }
+
+    static String drawStatus(BotLanguage language, ExchangeState state) {
+        boolean english = language == BotLanguage.ENGLISH;
         int participantCount = state.participants().size();
-        StringBuilder message = new StringBuilder("📊 **Статус обміну**\n")
-                .append("Доставлено: ")
+        StringBuilder message = new StringBuilder(
+                english ? "📊 **Exchange status**\n" : "📊 **Статус обміну**\n")
+                .append(english ? "Delivered: " : "Доставлено: ")
                 .append(state.deliveredUserIds().size())
                 .append("/")
                 .append(participantCount)
-                .append("\nПідтверджено: ")
+                .append(english ? "\nConfirmed: " : "\nПідтверджено: ")
                 .append(state.confirmedUserIds().size())
                 .append("/")
                 .append(participantCount)
                 .append("\n");
         state.participants().forEach(participant -> {
             String status = state.confirmedUserIds().contains(participant.userId())
-                    ? "підтвердив отримання"
+                    ? (english ? "confirmed receipt" : "підтвердив отримання")
                     : state.deliveredUserIds().contains(participant.userId())
-                            ? "очікує підтвердження"
-                            : "очікує доставку";
+                            ? (english ? "awaiting confirmation" : "очікує підтвердження")
+                            : (english ? "awaiting delivery" : "очікує доставку");
             message.append("• ")
                     .append(escapeMarkdown(participant.name()))
                     .append(" — ")
@@ -281,17 +338,45 @@ final class BotMessages {
         return "Тобі надійшов запит на пару від **" + escapedRequesterName + "**.";
     }
 
+    static String pairRequestReceived(BotLanguage language, String escapedRequesterName) {
+        return language == BotLanguage.ENGLISH
+                ? "You received a pair request from **" + escapedRequesterName + "**."
+                : pairRequestReceived(escapedRequesterName);
+    }
+
     static String pairRequestStatus(String escapedOtherName, boolean outgoing) {
         return (outgoing ? "Твій запит очікує на відповідь від **"
                 : "Запит від **") + escapedOtherName + "** очікує на твою відповідь.";
+    }
+
+    static String pairRequestStatus(
+            BotLanguage language, String escapedOtherName, boolean outgoing) {
+        if (language != BotLanguage.ENGLISH) {
+            return pairRequestStatus(escapedOtherName, outgoing);
+        }
+        return outgoing
+                ? "Your request is awaiting a response from **" + escapedOtherName + "**."
+                : "The request from **" + escapedOtherName + "** is awaiting your response.";
     }
 
     static String pairAccepted(String escapedPartnerName) {
         return PAIR_REQUEST_ACCEPTED + "**" + escapedPartnerName + "**.";
     }
 
+    static String pairAccepted(BotLanguage language, String escapedPartnerName) {
+        return language == BotLanguage.ENGLISH
+                ? "✅ Pair confirmed: **" + escapedPartnerName + "**."
+                : pairAccepted(escapedPartnerName);
+    }
+
     static String pairStatusPaired(String escapedPartnerName) {
         return "Твоя пара: **" + escapedPartnerName + "**.";
+    }
+
+    static String pairStatusPaired(BotLanguage language, String escapedPartnerName) {
+        return language == BotLanguage.ENGLISH
+                ? "Your partner: **" + escapedPartnerName + "**."
+                : pairStatusPaired(escapedPartnerName);
     }
 
     static String pairChanged(String escapedPartnerName) {
@@ -299,9 +384,24 @@ final class BotMessages {
                 + escapedPartnerName + "**.";
     }
 
+    static String pairChanged(BotLanguage language, String escapedPartnerName) {
+        return language == BotLanguage.ENGLISH
+                ? "The organizer changed the pairs. Your current partner: **"
+                        + escapedPartnerName + "**."
+                : pairChanged(escapedPartnerName);
+    }
+
     static String participantRoster(
             List<SecretSantaBot.Participant> participants,
             List<ExchangeState.PairRequest> pairRequests) {
+        return participantRoster(BotLanguage.UKRAINIAN, participants, pairRequests);
+    }
+
+    static String participantRoster(
+            BotLanguage language,
+            List<SecretSantaBot.Participant> participants,
+            List<ExchangeState.PairRequest> pairRequests) {
+        boolean english = language == BotLanguage.ENGLISH;
         Map<Long, SecretSantaBot.Participant> participantsById = new HashMap<>();
         participants.forEach(participant ->
                 participantsById.put(participant.chatId(), participant));
@@ -311,24 +411,25 @@ final class BotMessages {
             requestsByParticipant.put(request.requestedPartnerId(), request);
         });
 
-        StringBuilder message = new StringBuilder(ROSTER_HEADER);
+        StringBuilder message = new StringBuilder(
+                english ? EnglishMessages.translate(ROSTER_HEADER) : ROSTER_HEADER);
         participants.forEach(participant -> {
             String status;
             if (participant.partnerId() != null) {
-                status = "пара: `" + escapeMarkdown(
+                status = (english ? "partner: `" : "пара: `") + escapeMarkdown(
                         participantsById.get(participant.partnerId()).name()) + "`";
             } else {
                 ExchangeState.PairRequest request =
                         requestsByParticipant.get(participant.chatId());
                 if (request == null) {
-                    status = "без пари";
+                    status = english ? "unpaired" : "без пари";
                 } else {
                     long otherId = request.requesterId() == participant.chatId()
                             ? request.requestedPartnerId()
                             : request.requesterId();
                     String direction = request.requesterId() == participant.chatId()
-                            ? "запит до "
-                            : "запит від ";
+                            ? (english ? "request to " : "запит до ")
+                            : (english ? "request from " : "запит від ");
                     status = direction + "`"
                             + escapeMarkdown(participantsById.get(otherId).name()) + "`";
                 }
@@ -345,15 +446,23 @@ final class BotMessages {
 
     static String pairingChange(String escapedFirstName, String escapedSecondName,
             java.util.List<String> escapedReplacedPairs) {
-        StringBuilder message = new StringBuilder(PAIR_CREATED_PREFIX)
+        return pairingChange(BotLanguage.UKRAINIAN, escapedFirstName, escapedSecondName,
+                escapedReplacedPairs);
+    }
+
+    static String pairingChange(BotLanguage language, String escapedFirstName,
+            String escapedSecondName, java.util.List<String> escapedReplacedPairs) {
+        boolean english = language == BotLanguage.ENGLISH;
+        StringBuilder message = new StringBuilder(
+                english ? EnglishMessages.translate(PAIR_CREATED_PREFIX) : PAIR_CREATED_PREFIX)
                 .append(escapedFirstName)
-                .append(PAIR_CREATED_MIDDLE)
+                .append(english ? EnglishMessages.translate(PAIR_CREATED_MIDDLE) : PAIR_CREATED_MIDDLE)
                 .append(escapedSecondName)
                 .append(PAIR_CREATED_SUFFIX);
         if (!escapedReplacedPairs.isEmpty()) {
-            message.append(REPLACED_PAIRS_PREFIX)
+            message.append(english ? EnglishMessages.translate(REPLACED_PAIRS_PREFIX) : REPLACED_PAIRS_PREFIX)
                     .append(String.join("; ", escapedReplacedPairs))
-                    .append(REPLACED_PAIRS_SUFFIX);
+                    .append(english ? EnglishMessages.translate(REPLACED_PAIRS_SUFFIX) : REPLACED_PAIRS_SUFFIX);
         }
         return message.toString();
     }
