@@ -140,6 +140,12 @@ final class BotMessages {
     static final String RUN_FAILED =
             "❌ Не вдалося безпечно продовжити розподіл. Не відкривай нову реєстрацію; "
                     + "повтори `/run`, щоб відновити поточний розподіл.";
+    static final String DRAW_RECEIPT_RECORDED = "Отримання підтверджено.";
+    static final String DRAW_RECEIPT_ALREADY_RECORDED = "Отримання вже підтверджено.";
+    static final String DRAW_RECEIPT_STALE = "Це завдання більше неактивне.";
+    static final String DRAW_RECEIPT_UNAVAILABLE =
+            "Підтвердження доступне лише учасникам поточного розподілу.";
+    static final String DRAW_RECEIPT_FAILED = "Не вдалося зберегти підтвердження.";
     static final String MENU_LOAD_FAILED = "❌ Не вдалося завантажити меню. Спробуй пізніше.";
     static final String TOO_FEW_FOR_PAIRING =
             "❌ Для створення пари потрібно щонайменше двоє учасників.";
@@ -179,6 +185,14 @@ final class BotMessages {
         return "⚠️ Не вдалося доставити результати " + count
                 + " учасникам. Розподіл збережено; повтори `/run`, "
                 + "щоб повторити доставку без нового жеребкування.";
+    }
+
+    static String drawResult(PendingDrawService.Result result) {
+        return switch (result.status()) {
+            case TOO_FEW_PARTICIPANTS -> RUN_TOO_FEW;
+            case PENDING -> openPendingDeliveries(result.failedDeliveries());
+            case COMPLETED -> RUN_COMPLETED;
+        };
     }
 
     static String pairRequestReceived(String escapedRequesterName) {

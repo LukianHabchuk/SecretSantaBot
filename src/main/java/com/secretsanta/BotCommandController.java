@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -24,15 +23,6 @@ final class BotCommandController {
             ExchangeService.RegistrationResult.INVALID_INVITE, BotMessages.INVITE_INVALID_FINAL,
             ExchangeService.RegistrationResult.REGISTRATION_CLOSED,
                     BotMessages.REGISTRATION_CLOSED_FINAL);
-    private final Map<PendingDrawService.Status, Function<PendingDrawService.Result, String>>
-            drawMessages = Map.of(
-                    PendingDrawService.Status.TOO_FEW_PARTICIPANTS,
-                    result -> BotMessages.RUN_TOO_FEW,
-                    PendingDrawService.Status.PENDING,
-                    result -> BotMessages.openPendingDeliveries(result.failedDeliveries()),
-                    PendingDrawService.Status.COMPLETED,
-                    result -> BotMessages.RUN_COMPLETED);
-
     BotCommandController(
             OrganizerService organizerService,
             ExchangeService exchangeService,
@@ -160,7 +150,7 @@ final class BotCommandController {
         buttonController.cancelPairing();
         try {
             PendingDrawService.Result result = pendingDrawService.run();
-            responder.sendText(command.userId(), drawMessages.get(result.status()).apply(result));
+            responder.sendText(command.userId(), BotMessages.drawResult(result));
         } catch (IllegalStateException exception) {
             responder.sendText(command.userId(), BotMessages.RUN_NO_ASSIGNMENT);
         } catch (IOException exception) {

@@ -901,6 +901,77 @@ class SecretSantaBotTest {
         assertEquals(4, completedState.assignments().size());
     }
 
+    @Test
+    void participantCanConfirmReceiptFromTheirPrivateAssignmentMessage() throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+        String inviteCode = openRegistration(bot, messenger);
+        for (long userId = 201L; userId <= 203L; userId++) {
+            bot.onUpdateReceived(update(
+                    userId, userId, "private", "/join " + inviteCode + " Guest " + userId));
+        }
+
+        bot.onUpdateReceived(update(100L, 100L, "private", "/run"));
+
+        ExchangeState draw = new ExchangeStore(dataDirectory, TEST_DATA_KEY)
+                .load()
+                .orElseThrow();
+        SentMessage assignment = messenger.sentMessages.stream()
+                .filter(message -> message.chatId() == 201L)
+                .filter(message -> message.keyboard() != null)
+                .findFirst()
+                .orElseThrow();
+        assertTrue(assignment.keyboard().getKeyboard().stream()
+                .flatMap(List::stream)
+                .anyMatch(button -> button.getText().contains("Отримав")));
+        String callback = callbackDataFor(
+                assignment.keyboard(), "Отримав подарункове завдання");
+
+        bot.onUpdateReceived(callbackUpdate(
+                "draw:received:" + (draw.drawGeneration() + 1),
+                202L,
+                202L,
+                "stale-receipt"));
+        assertTrue(messenger.callbackAnswers.getLast().text().contains("неактивне"));
+
+        bot.onUpdateReceived(callbackUpdate(callback, 201L, 201L, "received"));
+
+        ExchangeState confirmed = new ExchangeStore(dataDirectory, TEST_DATA_KEY)
+                .load()
+                .orElseThrow();
+        assertEquals(draw.drawGeneration(), confirmed.drawGeneration());
+        assertEquals(java.util.Set.of(201L), confirmed.confirmedUserIds());
+    }
+
+    @Test
+    void organizerCanStartTheDrawFromThePrivateMenu() throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+        String inviteCode = openRegistration(bot, messenger);
+        for (long userId = 201L; userId <= 203L; userId++) {
+            bot.onUpdateReceived(update(
+                    userId, userId, "private", "/join " + inviteCode + " Guest " + userId));
+        }
+        bot.onUpdateReceived(update(100L, 100L, "private", "/start"));
+
+        String drawCallback = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Провести жеребкування");
+        bot.onUpdateReceived(callbackUpdate(drawCallback, 100L, 100L, "draw"));
+
+        ExchangeState state =
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow();
+        assertEquals(ExchangeState.Phase.AWAITING_CONFIRMATIONS, state.phase());
+        assertEquals(4, messenger.sentMessages.stream()
+                .filter(message -> message.keyboard() != null
+                        && message.keyboard().getKeyboard().stream()
+                                .flatMap(List::stream)
+                                .anyMatch(button -> button.getCallbackData()
+                                        .startsWith(BotButtons.DRAW_RECEIVED_PREFIX)))
+                .count());
+    }
+
     private OrganizerService createService() {
         return new OrganizerService(new OrganizerStore(dataDirectory), "setup-code");
     }

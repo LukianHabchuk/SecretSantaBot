@@ -25,6 +25,8 @@ final class BotButtons {
     static final String PAIR_REQUEST_CANCEL_PREFIX = PAIR_REQUEST_PREFIX + "cancel:";
     static final String ORGANIZER_PAIR = "organizer:pair";
     static final String ORGANIZER_ROSTER = "organizer:roster";
+    static final String ORGANIZER_RUN_DRAW = "organizer:run-draw";
+    static final String DRAW_RECEIVED_PREFIX = "draw:received:";
 
     private BotButtons() {}
 
@@ -41,16 +43,21 @@ final class BotButtons {
     }
 
     static InlineKeyboardMarkup organizerMenu(
-            boolean registrationOpen, boolean registeredParticipant) {
+            ExchangeState state, boolean registeredParticipant) {
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-        rows.add(List.of(button("Відкрити реєстрацію", OPEN)));
-        if (registrationOpen) {
+        if (state.phase() == ExchangeState.Phase.EMPTY) {
+            rows.add(List.of(button("Відкрити реєстрацію", OPEN)));
+        }
+        if (state.phase() == ExchangeState.Phase.REGISTRATION_OPEN) {
             rows.add(List.of(button("Скинути обмін", RESET)));
             rows.add(List.of(button("Керувати парами", ORGANIZER_PAIR)));
             rows.add(List.of(button("Список учасників", ORGANIZER_ROSTER)));
+            rows.add(List.of(button("Провести жеребкування", ORGANIZER_RUN_DRAW)));
             if (registeredParticipant) {
                 rows.addAll(participantPairMenu().getKeyboard());
             }
+        } else if (state.phase() == ExchangeState.Phase.DELIVERING) {
+            rows.add(List.of(button("Повторити доставку", ORGANIZER_RUN_DRAW)));
         }
         return keyboard(rows);
     }
@@ -65,6 +72,11 @@ final class BotButtons {
         return keyboard(List.of(
                 List.of(button("Так, скинути", RESET_CONFIRM_PREFIX + token)),
                 List.of(button("Скасувати", RESET_CANCEL_PREFIX + token))));
+    }
+
+    static InlineKeyboardMarkup assignmentReceived(long drawGeneration) {
+        return keyboard(List.of(List.of(
+                button("Отримав подарункове завдання", DRAW_RECEIVED_PREFIX + drawGeneration))));
     }
 
     static InlineKeyboardMarkup pairRequestResponse(String acceptToken, String declineToken) {

@@ -55,7 +55,8 @@ final class BotButtonController {
                 BotButtons.RESET, this::requestResetConfirmation);
         organizerPairActions = Map.of(
                 BotButtons.ORGANIZER_PAIR, this::startPairingFromButton,
-                BotButtons.ORGANIZER_ROSTER, this::showOrganizerRoster);
+                BotButtons.ORGANIZER_ROSTER, this::showOrganizerRoster,
+                BotButtons.ORGANIZER_RUN_DRAW, this::runDrawFromButton);
         registrationActions = Map.of(
                 ExchangeService.RegistrationResult.REGISTERED,
                 attempt -> finishJoinAttempt(
@@ -108,13 +109,14 @@ final class BotButtonController {
         try {
             boolean organizer = organizerService.isOrganizer(userId);
             boolean registeredParticipant = exchangeService.participant(userId).isPresent();
-            boolean registrationOpen = isRegistrationOpen();
+            ExchangeState state = exchangeService.state();
             responder.sendWithKeyboard(
                     chatId,
                     organizer ? BotMessages.ORGANIZER_START : BotMessages.PARTICIPANT_START,
                     organizer
-                            ? BotButtons.organizerMenu(registrationOpen, registeredParticipant)
-                            : registrationOpen && registeredParticipant
+                            ? BotButtons.organizerMenu(state, registeredParticipant)
+                            : state.phase() == ExchangeState.Phase.REGISTRATION_OPEN
+                                            && registeredParticipant
                                     ? BotButtons.participantPairMenu()
                                     : BotButtons.participantStartMenu());
         } catch (IOException exception) {
@@ -186,6 +188,10 @@ final class BotButtonController {
             participantPairController.handleCallbackQuery(callback);
             return;
         }
+        if (data != null && data.startsWith(BotButtons.DRAW_RECEIVED_PREFIX)) {
+            confirmDrawReceipt(callback);
+            return;
+        }
         if (!isOrganizerForCallback(userId, callback.getId())) {
             return;
         }
@@ -200,6 +206,35 @@ final class BotButtonController {
             return;
         }
         responder.answerCallback(callback.getId(), BotMessages.STALE_BUTTON);
+    }
+
+    private void confirmDrawReceipt(CallbackQuery callback) {
+        String generationValue =
+                callback.getData().substring(BotButtons.DRAW_RECEIVED_PREFIX.length());
+        long generation;
+        try {
+            generation = Long.parseLong(generationValue);
+        } catch (NumberFormatException exception) {
+            responder.answerCallback(callback.getId(), BotMessages.DRAW_RECEIPT_STALE);
+            return;
+        }
+
+        try {
+            boolean newlyConfirmed =
+                    exchangeService.confirmReceipt(callback.getFrom().getId(), generation);
+            responder.answerCallback(
+                    callback.getId(),
+                    newlyConfirmed
+                            ? BotMessages.DRAW_RECEIPT_RECORDED
+                            : BotMessages.DRAW_RECEIPT_ALREADY_RECORDED);
+        } catch (IllegalArgumentException exception) {
+            responder.answerCallback(callback.getId(), BotMessages.DRAW_RECEIPT_UNAVAILABLE);
+        } catch (IllegalStateException exception) {
+            responder.answerCallback(callback.getId(), BotMessages.DRAW_RECEIPT_STALE);
+        } catch (IOException exception) {
+            LOGGER.log(Level.SEVERE, BotLogMessages.DRAW_RESUME_FAILED, exception);
+            responder.answerCallback(callback.getId(), BotMessages.DRAW_RECEIPT_FAILED);
+        }
     }
 
     private void requestOrganizerClaim(CallbackQuery callback) {
@@ -241,6 +276,23 @@ final class BotButtonController {
                                 participants,
                                 exchangeService.state().pairRequests()));
         responder.answerCallback(callback.getId(), BotMessages.PAIR_STATUS_CALLBACK);
+    }
+
+    private void runDrawFromButton(CallbackQuery callback) {
+        long userId = callback.getFrom().getId();
+        cancelPairing();
+        try {
+            PendingDrawService.Result result = pendingDrawService.run();
+            responder.answerCallback(callback.getId(), BotMessages.drawResult(result));
+            responder.sendText(userId, BotMessages.drawResult(result));
+        } catch (IllegalStateException exception) {
+            responder.answerCallback(callback.getId(), BotMessages.RUN_NO_ASSIGNMENT);
+            responder.sendText(userId, BotMessages.RUN_NO_ASSIGNMENT);
+        } catch (IOException exception) {
+            LOGGER.log(Level.SEVERE, BotLogMessages.DRAW_RESUME_FAILED, exception);
+            responder.answerCallback(callback.getId(), BotMessages.RUN_FAILED);
+            responder.sendText(userId, BotMessages.RUN_FAILED);
+        }
     }
 
     private void requestJoin(CallbackQuery callback) {
@@ -375,7 +427,7 @@ final class BotButtonController {
             responder.sendWithKeyboard(
                     userId,
                     BotMessages.registrationOpened(inviteCode),
-                    BotButtons.organizerMenu(isRegistrationOpen(), true));
+                    BotButtons.organizerMenu(exchangeService.state(), true));
         } catch (PendingDrawService.PendingDrawInProgressException exception) {
             responder.answerCallback(callback.getId(), BotMessages.PENDING_DRAW_CALLBACK);
             responder.sendText(userId, BotMessages.PENDING_DRAW_RETRY);

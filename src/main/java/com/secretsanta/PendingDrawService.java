@@ -107,7 +107,7 @@ final class PendingDrawService {
                     telegramMessenger.sendMessage(
                             assignment.giverId(),
                             assignmentMessage(participantNames.get(assignment.receiverId())),
-                            null);
+                            BotButtons.assignmentReceived(state.drawGeneration()));
                 } catch (TelegramApiException exception) {
                     failedDeliveries++;
                     LOGGER.log(
