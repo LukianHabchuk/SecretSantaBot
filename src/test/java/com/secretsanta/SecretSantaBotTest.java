@@ -972,6 +972,93 @@ class SecretSantaBotTest {
                 .count());
     }
 
+    @Test
+    void organizerStatusShowsDeliveryAndReceiptProgressWithoutAssignments() throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+        String inviteCode = openRegistration(bot, messenger);
+        for (long userId = 201L; userId <= 203L; userId++) {
+            bot.onUpdateReceived(update(
+                    userId, userId, "private", "/join " + inviteCode + " Guest " + userId));
+        }
+        bot.onUpdateReceived(update(100L, 100L, "private", "/run"));
+        bot.onUpdateReceived(update(100L, 100L, "private", "/start"));
+
+        String statusCallback = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Статус обміну");
+        bot.onUpdateReceived(callbackUpdate(statusCallback, 100L, 100L, "status"));
+
+        String status = messenger.sentMessages.getLast().text();
+        assertTrue(status.contains("4/4"));
+        assertTrue(status.contains("0/4"));
+        assertTrue(status.contains("User 100"));
+        assertFalse(status.contains("Твоя ціль"));
+        assertFalse(status.contains("придбати подарунок для"));
+    }
+
+    @Test
+    void organizerCleanupRequiresEveryReceiptAndASeparateConfirmation() throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+        String inviteCode = openRegistration(bot, messenger);
+        for (long userId = 201L; userId <= 203L; userId++) {
+            bot.onUpdateReceived(update(
+                    userId, userId, "private", "/join " + inviteCode + " Guest " + userId));
+        }
+        bot.onUpdateReceived(update(100L, 100L, "private", "/run"));
+        bot.onUpdateReceived(update(100L, 100L, "private", "/start"));
+        assertFalse(messenger.sentMessages.getLast().keyboard().getKeyboard().stream()
+                .flatMap(List::stream)
+                .anyMatch(button -> button.getText().equals("Очистити обмін")));
+
+        List<SentMessage> assignmentMessages = messenger.sentMessages.stream()
+                .filter(message -> message.keyboard() != null
+                        && message.keyboard().getKeyboard().stream()
+                                .flatMap(List::stream)
+                                .anyMatch(button -> button.getCallbackData()
+                                        .startsWith(BotButtons.DRAW_RECEIVED_PREFIX)))
+                .toList();
+        for (SentMessage message : assignmentMessages) {
+            String receipt = callbackDataFor(
+                    message.keyboard(), "Отримав подарункове завдання");
+            bot.onUpdateReceived(callbackUpdate(
+                    receipt, message.chatId(), message.chatId(), "receipt-" + message.chatId()));
+        }
+        bot.onUpdateReceived(update(100L, 100L, "private", "/start"));
+
+        String cleanupRequest = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Очистити обмін");
+        bot.onUpdateReceived(callbackUpdate(cleanupRequest, 100L, 100L, "cleanup"));
+        String cleanupConfirmation = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Так, видалити обмін");
+        String cleanupCancellation = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Скасувати");
+        bot.onUpdateReceived(callbackUpdate(
+                cleanupCancellation, 100L, 100L, "cancel-cleanup"));
+        assertEquals(
+                ExchangeState.Phase.AWAITING_CONFIRMATIONS,
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow().phase());
+
+        bot.onUpdateReceived(callbackUpdate(cleanupRequest, 100L, 100L, "cleanup-again"));
+        cleanupConfirmation = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Так, видалити обмін");
+        bot.onUpdateReceived(callbackUpdate(
+                cleanupConfirmation, 201L, 201L, "unauthorized-cleanup"));
+        assertEquals(
+                ExchangeState.Phase.AWAITING_CONFIRMATIONS,
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow().phase());
+
+        bot.onUpdateReceived(callbackUpdate(
+                cleanupConfirmation, 100L, 100L, "confirm-cleanup"));
+
+        assertEquals(
+                ExchangeState.Phase.EMPTY,
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow().phase());
+        assertTrue(organizerService.isOrganizer(100L));
+    }
+
     private OrganizerService createService() {
         return new OrganizerService(new OrganizerStore(dataDirectory), "setup-code");
     }

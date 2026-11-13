@@ -383,6 +383,14 @@ final class ExchangeService {
         return true;
     }
 
+    synchronized boolean canCleanupExchange() {
+        Set<Long> participantIds = state.participants().stream()
+                .map(ExchangeState.Participant::userId)
+                .collect(java.util.stream.Collectors.toSet());
+        return state.phase() == ExchangeState.Phase.AWAITING_CONFIRMATIONS
+                && state.confirmedUserIds().equals(participantIds);
+    }
+
     synchronized boolean hasActiveDraw() {
         return state.phase() == ExchangeState.Phase.DELIVERING
                 || state.phase() == ExchangeState.Phase.AWAITING_CONFIRMATIONS;

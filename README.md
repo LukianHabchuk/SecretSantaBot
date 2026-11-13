@@ -156,12 +156,16 @@ The organizer starts the draw with `/run`. The bot saves the complete encrypted
 draw before sending any assignments. If any private delivery fails, the
 organizer is told to retry with `/run`; the bot retries only undelivered messages
 using the same assignments. The encrypted draw and roster survive restarts and
-remain stored after delivery; new registration stays blocked until guarded
-cleanup is available. Legacy encrypted `pending-draw.enc` data is migrated
-before normal bot operations; partial deliveries resume with the original
-assignments. If Telegram accepted a message just before the process stopped,
-retrying may send that same assignment again. Run only one bot process against a
-data directory at a time.
+remain stored after delivery; each participant can confirm receipt from their
+private assignment message. The organizer's **Статус обміну** button shows
+delivery and confirmation progress without revealing recipients. After every
+participant confirms, the organizer can choose **Очистити обмін** and must
+explicitly confirm deletion; this removes exchange data but preserves organizer
+identity. Legacy encrypted `pending-draw.enc` data is migrated before normal bot
+operations; partial deliveries resume with the original assignments. If
+Telegram accepted a message just before the process stopped, retrying may send
+that same assignment again. Run only one bot process against a data directory
+at a time.
 
 ## Project layout
 

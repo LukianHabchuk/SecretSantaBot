@@ -27,6 +27,7 @@ final class BotButtonController {
     private final Map<Long, PendingInput> pendingInputs = new HashMap<>();
     private final Map<Long, PendingJoin> pendingJoins = new HashMap<>();
     private final Map<Long, String> pendingResetTokens = new HashMap<>();
+    private final Map<Long, String> pendingCleanupTokens = new HashMap<>();
     private final Map<String, Consumer<CallbackQuery>> onboardingActions;
     private final Map<String, Consumer<CallbackQuery>> organizerPairActions;
     private final BotParticipantPairController participantPairController;
@@ -56,7 +57,9 @@ final class BotButtonController {
         organizerPairActions = Map.of(
                 BotButtons.ORGANIZER_PAIR, this::startPairingFromButton,
                 BotButtons.ORGANIZER_ROSTER, this::showOrganizerRoster,
-                BotButtons.ORGANIZER_RUN_DRAW, this::runDrawFromButton);
+                BotButtons.ORGANIZER_RUN_DRAW, this::runDrawFromButton,
+                BotButtons.ORGANIZER_DRAW_STATUS, this::showDrawStatus,
+                BotButtons.ORGANIZER_CLEANUP, this::requestCleanupConfirmation);
         registrationActions = Map.of(
                 ExchangeService.RegistrationResult.REGISTERED,
                 attempt -> finishJoinAttempt(
@@ -106,6 +109,7 @@ final class BotButtonController {
         pendingInputs.remove(userId);
         pendingJoins.remove(userId);
         pendingResetTokens.remove(userId);
+        pendingCleanupTokens.remove(userId);
         try {
             boolean organizer = organizerService.isOrganizer(userId);
             boolean registeredParticipant = exchangeService.participant(userId).isPresent();
@@ -201,6 +205,12 @@ final class BotButtonController {
             organizerPairAction.accept(callback);
             return;
         }
+        if (data != null
+                && (data.startsWith(BotButtons.CLEANUP_CONFIRM_PREFIX)
+                        || data.startsWith(BotButtons.CLEANUP_CANCEL_PREFIX))) {
+            confirmCleanup(callback);
+            return;
+        }
         if (data != null && data.startsWith(BotButtons.PAIR_PREFIX)) {
             handlePairingCallback(callback);
             return;
@@ -292,6 +302,64 @@ final class BotButtonController {
             LOGGER.log(Level.SEVERE, BotLogMessages.DRAW_RESUME_FAILED, exception);
             responder.answerCallback(callback.getId(), BotMessages.RUN_FAILED);
             responder.sendText(userId, BotMessages.RUN_FAILED);
+        }
+    }
+
+    private void showDrawStatus(CallbackQuery callback) {
+        responder.sendText(
+                callback.getFrom().getId(),
+                BotMessages.drawStatus(exchangeService.state()));
+        responder.answerCallback(callback.getId(), BotMessages.DRAW_STATUS_CALLBACK);
+    }
+
+    private void requestCleanupConfirmation(CallbackQuery callback) {
+        long userId = callback.getFrom().getId();
+        if (!exchangeService.canCleanupExchange()) {
+            responder.answerCallback(callback.getId(), BotMessages.CLEANUP_UNAVAILABLE_CALLBACK);
+            responder.sendText(userId, BotMessages.CLEANUP_UNAVAILABLE);
+            return;
+        }
+        String token = newToken();
+        pendingCleanupTokens.put(userId, token);
+        responder.sendWithKeyboard(
+                userId,
+                BotMessages.CLEANUP_CONFIRMATION,
+                BotButtons.cleanupConfirmation(token));
+        responder.answerCallback(callback.getId(), BotMessages.CLEANUP_CONFIRMATION_CALLBACK);
+    }
+
+    private void confirmCleanup(CallbackQuery callback) {
+        long userId = callback.getFrom().getId();
+        String data = callback.getData();
+        boolean cancel = data.startsWith(BotButtons.CLEANUP_CANCEL_PREFIX);
+        String prefix = cancel
+                ? BotButtons.CLEANUP_CANCEL_PREFIX
+                : BotButtons.CLEANUP_CONFIRM_PREFIX;
+        String token = data.substring(prefix.length());
+        if (token.isBlank() || !Objects.equals(pendingCleanupTokens.get(userId), token)) {
+            responder.answerCallback(callback.getId(), BotMessages.STALE_BUTTON);
+            return;
+        }
+        pendingCleanupTokens.remove(userId);
+        if (cancel) {
+            responder.answerCallback(callback.getId(), BotMessages.CLEANUP_CANCELLED_CALLBACK);
+            responder.sendText(userId, BotMessages.CLEANUP_CANCELLED);
+            return;
+        }
+        try {
+            exchangeService.cleanupExchange(userId, true);
+            responder.answerCallback(callback.getId(), BotMessages.EXCHANGE_CLEANED_CALLBACK);
+            responder.sendText(userId, BotMessages.EXCHANGE_CLEANED);
+            showStartMenu(userId, userId, true);
+        } catch (SecurityException exception) {
+            responder.answerCallback(callback.getId(), BotMessages.ORGANIZER_ONLY_ACTION);
+        } catch (IllegalStateException exception) {
+            responder.answerCallback(callback.getId(), BotMessages.CLEANUP_UNAVAILABLE_CALLBACK);
+            responder.sendText(userId, BotMessages.CLEANUP_UNAVAILABLE);
+        } catch (IOException exception) {
+            LOGGER.log(Level.SEVERE, BotLogMessages.EXCHANGE_CLEANUP_FAILED, exception);
+            responder.answerCallback(callback.getId(), BotMessages.CLEANUP_FAILED_CALLBACK);
+            responder.sendText(userId, BotMessages.CLEANUP_FAILED);
         }
     }
 

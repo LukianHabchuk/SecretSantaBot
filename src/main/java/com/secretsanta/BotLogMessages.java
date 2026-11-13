@@ -19,6 +19,8 @@ final class BotLogMessages {
             "Could not persist or resolve participant pair request.";
     static final String DRAW_RESUME_FAILED =
             "Could not safely persist or resume the pending draw.";
+    static final String EXCHANGE_CLEANUP_FAILED =
+            "Could not clean up the completed exchange.";
     static final String TELEGRAM_RESPONSE_SEND_FAILED = "Failed to send Telegram response.";
     static final String TELEGRAM_CALLBACK_ANSWER_FAILED = "Failed to answer Telegram callback.";
     static final String DATA_DIRECTORY_LOCK_FAILED =

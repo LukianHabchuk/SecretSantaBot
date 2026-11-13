@@ -26,6 +26,10 @@ final class BotButtons {
     static final String ORGANIZER_PAIR = "organizer:pair";
     static final String ORGANIZER_ROSTER = "organizer:roster";
     static final String ORGANIZER_RUN_DRAW = "organizer:run-draw";
+    static final String ORGANIZER_DRAW_STATUS = "organizer:draw-status";
+    static final String ORGANIZER_CLEANUP = "organizer:cleanup";
+    static final String CLEANUP_CONFIRM_PREFIX = ORGANIZER_CLEANUP + ":confirm:";
+    static final String CLEANUP_CANCEL_PREFIX = ORGANIZER_CLEANUP + ":cancel:";
     static final String DRAW_RECEIVED_PREFIX = "draw:received:";
 
     private BotButtons() {}
@@ -58,6 +62,14 @@ final class BotButtons {
             }
         } else if (state.phase() == ExchangeState.Phase.DELIVERING) {
             rows.add(List.of(button("Повторити доставку", ORGANIZER_RUN_DRAW)));
+            rows.add(List.of(button("Статус обміну", ORGANIZER_DRAW_STATUS)));
+        } else if (state.phase() == ExchangeState.Phase.AWAITING_CONFIRMATIONS) {
+            rows.add(List.of(button("Статус обміну", ORGANIZER_DRAW_STATUS)));
+            if (state.participants().stream()
+                    .allMatch(participant ->
+                            state.confirmedUserIds().contains(participant.userId()))) {
+                rows.add(List.of(button("Очистити обмін", ORGANIZER_CLEANUP)));
+            }
         }
         return keyboard(rows);
     }
@@ -72,6 +84,12 @@ final class BotButtons {
         return keyboard(List.of(
                 List.of(button("Так, скинути", RESET_CONFIRM_PREFIX + token)),
                 List.of(button("Скасувати", RESET_CANCEL_PREFIX + token))));
+    }
+
+    static InlineKeyboardMarkup cleanupConfirmation(String token) {
+        return keyboard(List.of(
+                List.of(button("Так, видалити обмін", CLEANUP_CONFIRM_PREFIX + token)),
+                List.of(button("Скасувати", CLEANUP_CANCEL_PREFIX + token))));
     }
 
     static InlineKeyboardMarkup assignmentReceived(long drawGeneration) {

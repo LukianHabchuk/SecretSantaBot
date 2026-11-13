@@ -146,6 +146,21 @@ final class BotMessages {
     static final String DRAW_RECEIPT_UNAVAILABLE =
             "Підтвердження доступне лише учасникам поточного розподілу.";
     static final String DRAW_RECEIPT_FAILED = "Не вдалося зберегти підтвердження.";
+    static final String DRAW_STATUS_CALLBACK = "Статус обміну.";
+    static final String CLEANUP_CONFIRMATION =
+            "Усі учасники підтвердили отримання. Видалити дані поточного обміну?";
+    static final String CLEANUP_CONFIRMATION_CALLBACK = "Підтверди або скасуй очищення.";
+    static final String CLEANUP_CANCELLED_CALLBACK = "Очищення скасовано.";
+    static final String CLEANUP_CANCELLED = "Очищення скасовано. Дані обміну збережено.";
+    static final String CLEANUP_UNAVAILABLE_CALLBACK =
+            "Очищення доступне після підтвердження всіма учасниками.";
+    static final String CLEANUP_UNAVAILABLE =
+            "❌ Обмін можна видалити лише після того, як усі учасники підтвердять отримання.";
+    static final String EXCHANGE_CLEANED_CALLBACK = "Обмін видалено.";
+    static final String EXCHANGE_CLEANED =
+            "✅ Дані обміну видалено. Ти залишаєшся організатором.";
+    static final String CLEANUP_FAILED_CALLBACK = "Не вдалося видалити обмін.";
+    static final String CLEANUP_FAILED = "❌ Не вдалося видалити обмін. Спробуй пізніше.";
     static final String MENU_LOAD_FAILED = "❌ Не вдалося завантажити меню. Спробуй пізніше.";
     static final String TOO_FEW_FOR_PAIRING =
             "❌ Для створення пари потрібно щонайменше двоє учасників.";
@@ -193,6 +208,33 @@ final class BotMessages {
             case PENDING -> openPendingDeliveries(result.failedDeliveries());
             case COMPLETED -> RUN_COMPLETED;
         };
+    }
+
+    static String drawStatus(ExchangeState state) {
+        int participantCount = state.participants().size();
+        StringBuilder message = new StringBuilder("📊 **Статус обміну**\n")
+                .append("Доставлено: ")
+                .append(state.deliveredUserIds().size())
+                .append("/")
+                .append(participantCount)
+                .append("\nПідтверджено: ")
+                .append(state.confirmedUserIds().size())
+                .append("/")
+                .append(participantCount)
+                .append("\n");
+        state.participants().forEach(participant -> {
+            String status = state.confirmedUserIds().contains(participant.userId())
+                    ? "підтвердив отримання"
+                    : state.deliveredUserIds().contains(participant.userId())
+                            ? "очікує підтвердження"
+                            : "очікує доставку";
+            message.append("• ")
+                    .append(escapeMarkdown(participant.name()))
+                    .append(" — ")
+                    .append(status)
+                    .append("\n");
+        });
+        return message.toString();
     }
 
     static String pairRequestReceived(String escapedRequesterName) {

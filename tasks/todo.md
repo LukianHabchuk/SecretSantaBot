@@ -218,20 +218,20 @@ Received/OK action, current-draw confirmation tracking, organizer status view,
 and explicit deletion after all participants confirm.
 
 **Acceptance criteria:**
-- [ ] Confirmation is recorded only for the current draw and is idempotent.
-- [ ] Organizer can start assignment from a private button and see delivery
+- [x] Confirmation is recorded only for the current draw and is idempotent.
+- [x] Organizer can start assignment from a private button and see delivery
   progress without seeing assignment recipients.
-- [ ] Organizer can see who confirmed and aggregate status, but never their
+- [x] Organizer can see who confirmed and aggregate status, but never their
   assignment recipients.
-- [ ] Cleanup requires every current participant's confirmation and a separate
+- [x] Cleanup requires every current participant's confirmation and a separate
   organizer confirmation; it removes exchange data but preserves organizer
   identity.
-- [ ] Until cleanup, the exchange survives restart.
+- [x] Until cleanup, the exchange survives restart.
 
 **Verification:**
-- [ ] Tests cover participant confirmation, duplicate and unauthorized actions,
+- [x] Tests cover participant confirmation, duplicate and unauthorized actions,
   cleanup denial before all confirmations, confirmed deletion, and restart.
-- [ ] `mvn test` passes.
+- [x] `mvn test` passes.
 
 **Dependencies:** Task 12
 
