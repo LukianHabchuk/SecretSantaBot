@@ -114,6 +114,116 @@ To deploy an updated checkout, back up first and rebuild with
 `docker compose up --build -d`. Test an update with a separate bot before
 relying on it for a live exchange.
 
+## Manual deployment to AWS EC2
+
+The GitHub Actions workflow builds and tests the Docker image for pull requests
+and pushes to `main`. Pushes also publish images to GHCR. A manually started
+workflow on `main` builds and publishes the selected commit, then deploys its
+commit-tagged image to one EC2 instance over SSH. A deployment verifies that
+the container is running; it does not verify Telegram connectivity or delivery.
+
+This is a one-instance learning setup, not a high-availability service. AWS
+eligibility, instance availability, credits, and pricing depend on your account
+and can change. Review the [AWS Free Tier terms](https://aws.amazon.com/free/)
+and your account's billing dashboard before creating resources. Stopping an
+instance does not necessarily stop all storage or address charges. Do not upgrade
+to a paid plan unless you accept its charges.
+
+### One-time server setup
+
+1. Create an AWS account and check its Free Plan eligibility. Launch an eligible
+   **x86-64 Ubuntu** EC2 instance in an available region. The image produced by
+   this workflow is x86-64; an ARM instance needs a different image build. Create
+   an EC2 SSH key pair and keep the private key secure.
+2. Configure the instance's security group for SSH access. Initially restrict
+   port 22 to your own IP for setup. The GitHub-hosted runner also needs SSH
+   access when deploying; its IP can change. If you temporarily broaden access,
+   do so only for the deployment window and restrict it again afterward.
+   Never enable password-based SSH or open an inbound bot port: the bot uses
+   outbound long polling.
+3. Connect to the instance as its SSH user (normally `ubuntu` for Ubuntu images).
+   Install Docker Engine and the Compose plugin following
+   [Docker's Ubuntu instructions](https://docs.docker.com/engine/install/ubuntu/).
+   Enable Docker at boot. Make sure the SSH user can run `docker` without
+   `sudo`; membership in the Docker group grants root-equivalent access.
+   Reconnect after changing group membership, and verify:
+
+   ```bash
+   docker version
+   docker compose version
+   sudo systemctl enable --now docker
+   ```
+
+4. Create `~/secretsanta` on the instance and a private
+   `~/secretsanta/.env` with the four values described in [Configuration](#configuration).
+   For this disposable trial, generate fresh, different values for the setup code
+   and data key, for example with `openssl rand -base64 32` run twice. Set
+   `chmod 600 ~/secretsanta/.env`. Never commit the file or send its contents
+   to chat. Stop any other bot using the same Telegram token before deployment.
+5. The instance must be able to pull the GHCR package. If the package is private,
+   authenticate **on the instance** with a GitHub personal access token that has
+   `read:packages` and access to the package. Protect Docker's credentials file
+   and follow [GitHub's container registry instructions](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
+   A public package does not require this login. The package can only be pulled
+   after a successful publish.
+6. Verify the SSH host key before configuring GitHub Actions. On the EC2
+   instance, run `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`. On your
+   Windows computer, replace `EC2_HOST` with the exact DNS name or IP you will
+   use for deployment and run:
+
+   ```powershell
+   ssh-keyscan -t ed25519 EC2_HOST | Set-Content -Encoding ascii .\ec2_known_hosts
+   ssh-keygen -lf .\ec2_known_hosts
+   ```
+
+   Compare the fingerprint with the one displayed on the instance. Only after
+   matching them, use the complete contents of `ec2_known_hosts` as the secret
+   below. Do not trust an unverified key obtained from the network.
+7. In GitHub repository **Settings → Secrets and variables → Actions**, add:
+
+   | Secret | Value |
+   | --- | --- |
+   | `DEPLOY_HOST` | EC2 public DNS name or IPv4 address |
+   | `DEPLOY_USER` | SSH username, normally `ubuntu` |
+   | `DEPLOY_SSH_KEY` | Complete private key for that SSH user |
+   | `DEPLOY_SSH_KNOWN_HOSTS` | Verified known-hosts line from step 6 |
+
+   These grant access to the server. Store the bot's token and data key only in
+   the instance's protected `.env`, not in workflow code or container images.
+
+### Deploy, check, and stop
+
+1. Merge the workflow to `main` and wait for its push build to publish an image.
+   If necessary, configure GHCR package access on the instance as described above.
+2. In GitHub Actions, select **Build, publish and deploy → Run workflow**, select
+   `main`, and start the run. Only this manual trigger deploys; pull requests
+   and ordinary pushes do not. Allow SSH access from the runner during the run.
+3. Check that the deploy job succeeds, then check `docker ps` and
+   `docker logs <container-id>` on the instance. Open a private chat with the bot and verify
+   `/start` and the desired exchange flow. Turn off your PC and verify again.
+   A running container alone does not establish that Telegram works. The named
+   volume survives container replacement and the restart policy handles normal
+   host reboots while Docker is enabled.
+4. After the experiment, stop the instance in AWS. To avoid continued charges,
+   review all EC2 resources, including EBS volumes and public IPs, and terminate
+   or release the resources you no longer need. Termination and volume deletion
+   may permanently delete bot data; back up anything you want to keep first.
+   AWS account and Free Plan expiry can also end access to the instance.
+
+To roll back, choose an earlier successfully published commit SHA, connect to the
+instance, and run the following from `~/secretsanta`, replacing the image with
+the lowercase GHCR owner/repository and the full 40-character SHA:
+
+```bash
+export SECRET_SANTA_IMAGE=ghcr.io/owner/repository:sha-FULL_COMMIT_SHA
+docker compose -p secretsanta -f compose.yaml -f compose.deploy.yaml pull bot
+docker compose -p secretsanta -f compose.yaml -f compose.deploy.yaml up -d --no-build
+```
+
+This uses the current Compose files and existing data volume; it does not roll
+back data or guarantee compatibility with an older application. The original
+image must still exist in GHCR. Verify the bot again after a rollback.
+
 ## Configuration
 
 Provide these values through the process environment or a trusted secret manager:

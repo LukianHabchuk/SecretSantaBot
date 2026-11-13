@@ -1,0 +1,3 @@
+services:
+  bot:
+    image: ${SECRET_SANTA_IMAGE:?Set SECRET_SANTA_IMAGE to the published image}
