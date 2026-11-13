@@ -12,6 +12,7 @@ import java.util.Objects;
 import java.util.OptionalLong;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
@@ -339,13 +340,12 @@ final class BotButtonController {
     private void showOrganizerRoster(CallbackQuery callback) {
         long userId = callback.getFrom().getId();
         List<SecretSantaBot.Participant> participants = exchangeService.participants();
-        responder.sendText(
-                userId,
-                participants.isEmpty()
-                        ? BotMessages.EMPTY_ROSTER
-                        : BotMessages.participantRoster(
-                                participants,
-                                exchangeService.state().pairRequests()));
+        if (participants.isEmpty()) {
+            responder.sendText(userId, BotMessages.EMPTY_ROSTER);
+        } else {
+            responder.sendText(userId, language -> BotMessages.participantRoster(
+                    language, participants, exchangeService.state().pairRequests()));
+        }
         responder.answerCallback(callback.getId(), BotMessages.PAIR_STATUS_CALLBACK);
     }
 
@@ -354,8 +354,8 @@ final class BotButtonController {
         cancelPairing();
         try {
             PendingDrawService.Result result = pendingDrawService.run();
-            responder.answerCallback(callback.getId(), BotMessages.drawResult(result));
-            responder.sendText(userId, BotMessages.drawResult(result));
+            responder.answerCallback(callback.getId(), language -> BotMessages.drawResult(language, result));
+            responder.sendText(userId, language -> BotMessages.drawResult(language, result));
         } catch (IllegalStateException exception) {
             responder.answerCallback(callback.getId(), BotMessages.RUN_NO_ASSIGNMENT);
             responder.sendText(userId, BotMessages.RUN_NO_ASSIGNMENT);
@@ -369,7 +369,7 @@ final class BotButtonController {
     private void showDrawStatus(CallbackQuery callback) {
         responder.sendText(
                 callback.getFrom().getId(),
-                BotMessages.drawStatus(exchangeService.state()));
+                language -> BotMessages.drawStatus(language, exchangeService.state()));
         responder.answerCallback(callback.getId(), BotMessages.DRAW_STATUS_CALLBACK);
     }
 
@@ -414,7 +414,7 @@ final class BotButtonController {
             PendingDrawService.Result result = pendingDrawService.replaceDraw();
             responder.answerCallback(
                     callback.getId(), BotMessages.replacementDrawCallback(result));
-            responder.sendText(userId, BotMessages.replacementDrawResult(result));
+            responder.sendText(userId, language -> BotMessages.replacementDrawResult(language, result));
             showStartMenu(userId, userId, true);
         } catch (IllegalStateException exception) {
             responder.answerCallback(
@@ -544,7 +544,7 @@ final class BotButtonController {
         pendingJoins.put(userId, pendingJoin);
         responder.sendWithKeyboard(
                 userId,
-                BotMessages.joinConfirmation(
+                language -> BotMessages.joinConfirmation(language,
                         BotMessages.escapeMarkdown(pendingJoin.suggestedName())),
                 BotButtons.joinConfirmation(pendingJoin.confirmationToken()));
     }
@@ -575,7 +575,8 @@ final class BotButtonController {
                     .orElseThrow(() -> new IOException("Organizer identity is unavailable."));
             SecretSantaBot.Participant participant = exchangeService.participant(userId)
                     .orElseThrow(() -> new IOException("Registered participant is unavailable."));
-            responder.sendText(organizerId, BotMessages.participantJoined(participant.name()));
+            responder.sendText(organizerId,
+                    language -> BotMessages.participantJoined(language, participant.name()));
         } catch (IOException exception) {
             LOGGER.log(Level.SEVERE, BotLogMessages.JOIN_NOTIFICATION_FAILED, exception);
         }
@@ -629,7 +630,7 @@ final class BotButtonController {
             responder.answerCallback(callback.getId(), BotMessages.REGISTRATION_OPEN_CALLBACK);
             responder.sendWithKeyboard(
                     userId,
-                    BotMessages.registrationOpened(inviteCode),
+                    language -> BotMessages.registrationOpened(language, inviteCode),
                     BotButtons.organizerMenu(exchangeService.state(), true));
         } catch (PendingDrawService.PendingDrawInProgressException exception) {
             responder.answerCallback(callback.getId(), BotMessages.PENDING_DRAW_CALLBACK);
@@ -784,7 +785,7 @@ final class BotButtonController {
                 .toList();
         responder.sendWithKeyboard(
                 userId,
-                BotMessages.partnerSelection(
+                language -> BotMessages.partnerSelection(language,
                         BotMessages.escapeMarkdown(selected.name())),
                 BotButtons.pairing(
                         roster,
@@ -804,7 +805,7 @@ final class BotButtonController {
                 return;
             }
             notifyPairingChange(change);
-            responder.sendText(userId, pairingChangeMessage(change));
+            responder.sendText(userId, language -> pairingChangeMessage(language, change));
             responder.answerCallback(callback.getId(), BotMessages.PAIR_SAVED_CALLBACK);
         } catch (IllegalArgumentException exception) {
             responder.sendText(userId, BotMessages.PARTICIPANT_LIST_CHANGED);
@@ -820,39 +821,47 @@ final class BotButtonController {
     }
 
     private void notifyPairingChange(ExchangeService.PairingChange change) {
-        Map<Long, String> notifications = new HashMap<>();
+        Map<Long, Function<BotLanguage, String>> notifications = new HashMap<>();
         notifications.put(
                 change.first().chatId(),
-                BotMessages.pairChanged(BotMessages.escapeMarkdown(change.second().name())));
+                language -> BotMessages.pairChanged(
+                        language, BotMessages.escapeMarkdown(change.second().name())));
         notifications.put(
                 change.second().chatId(),
-                BotMessages.pairChanged(BotMessages.escapeMarkdown(change.first().name())));
+                language -> BotMessages.pairChanged(
+                        language, BotMessages.escapeMarkdown(change.first().name())));
         if (change.formerPartnerOfFirst() != null) {
             notifications.put(
-                    change.formerPartnerOfFirst().chatId(), BotMessages.PAIR_CHANGED_UNPAIRED);
+                    change.formerPartnerOfFirst().chatId(),
+                    language -> BotResponder.staticText(language, BotMessages.PAIR_CHANGED_UNPAIRED));
         }
         if (change.formerPartnerOfSecond() != null) {
             notifications.put(
-                    change.formerPartnerOfSecond().chatId(), BotMessages.PAIR_CHANGED_UNPAIRED);
+                    change.formerPartnerOfSecond().chatId(),
+                    language -> BotResponder.staticText(language, BotMessages.PAIR_CHANGED_UNPAIRED));
         }
         change.canceledRequests().forEach(request -> {
             notifications.merge(
                     request.requesterId(),
-                    BotMessages.PAIR_REQUEST_CANCELED_BY_ORGANIZER,
+                    language -> BotResponder.staticText(
+                            language, BotMessages.PAIR_REQUEST_CANCELED_BY_ORGANIZER),
                     BotButtonController::appendNotification);
             notifications.merge(
                     request.requestedPartnerId(),
-                    BotMessages.PAIR_REQUEST_CANCELED_BY_ORGANIZER,
+                    language -> BotResponder.staticText(
+                            language, BotMessages.PAIR_REQUEST_CANCELED_BY_ORGANIZER),
                     BotButtonController::appendNotification);
         });
         notifications.forEach(responder::sendText);
     }
 
-    private static String appendNotification(String existing, String added) {
-        return existing + "\n" + added;
+    private static Function<BotLanguage, String> appendNotification(
+            Function<BotLanguage, String> existing, Function<BotLanguage, String> added) {
+        return language -> existing.apply(language) + "\n" + added.apply(language);
     }
 
-    private static String pairingChangeMessage(ExchangeService.PairingChange change) {
+    private static String pairingChangeMessage(
+            BotLanguage language, ExchangeService.PairingChange change) {
         List<String> replacedPairs = new ArrayList<>();
         if (change.formerPartnerOfFirst() != null) {
             replacedPairs.add(
@@ -865,6 +874,7 @@ final class BotButtonController {
                             + BotMessages.escapeMarkdown(change.formerPartnerOfSecond().name()));
         }
         return BotMessages.pairingChange(
+                language,
                 BotMessages.escapeMarkdown(change.first().name()),
                 BotMessages.escapeMarkdown(change.second().name()),
                 replacedPairs);

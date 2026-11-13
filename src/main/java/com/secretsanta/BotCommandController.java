@@ -108,7 +108,8 @@ final class BotCommandController {
         try {
             String inviteCode =
                     buttonController.openRegistration(command.userId(), command.firstName());
-            responder.sendText(command.chatId(), BotMessages.registrationOpened(inviteCode));
+            responder.sendText(command.chatId(),
+                    language -> BotMessages.registrationOpened(language, inviteCode));
         } catch (PendingDrawService.PendingDrawInProgressException exception) {
             responder.sendText(command.chatId(), BotMessages.OPEN_PENDING_DRAW);
         } catch (IllegalArgumentException exception) {
@@ -159,7 +160,8 @@ final class BotCommandController {
 
         responder.sendText(
                 command.chatId(),
-                BotMessages.participantRoster(roster, exchangeService.state().pairRequests()));
+                language -> BotMessages.participantRoster(
+                        language, roster, exchangeService.state().pairRequests()));
     }
 
     private void runDraw(Command command) {
@@ -169,7 +171,7 @@ final class BotCommandController {
         buttonController.cancelPairing();
         try {
             PendingDrawService.Result result = pendingDrawService.run();
-            responder.sendText(command.userId(), BotMessages.drawResult(result));
+            responder.sendText(command.userId(), language -> BotMessages.drawResult(language, result));
         } catch (IllegalStateException exception) {
             responder.sendText(command.userId(), BotMessages.RUN_NO_ASSIGNMENT);
         } catch (IOException exception) {

@@ -178,7 +178,8 @@ final class BotParticipantPairController {
             ExchangeState.Participant partner = findParticipant(state, participant.partnerId());
             responder.sendText(
                     userId,
-                    BotMessages.pairStatusPaired(BotMessages.escapeMarkdown(partner.name())));
+                    language -> BotMessages.pairStatusPaired(
+                            language, BotMessages.escapeMarkdown(partner.name())));
             return;
         }
         ExchangeState.PairRequest request = state.pairRequests().stream()
@@ -209,12 +210,13 @@ final class BotParticipantPairController {
 
         responder.sendWithKeyboard(
                 request.requesterId(),
-                BotMessages.pairRequestStatus(
+                language -> BotMessages.pairRequestStatus(language,
                         BotMessages.escapeMarkdown(recipient.name()), true),
                 BotButtons.pairRequestCancellation(cancelToken));
         responder.sendWithKeyboard(
                 request.requestedPartnerId(),
-                BotMessages.pairRequestReceived(BotMessages.escapeMarkdown(requester.name())),
+                language -> BotMessages.pairRequestReceived(
+                        language, BotMessages.escapeMarkdown(requester.name())),
                 BotButtons.pairRequestResponse(acceptToken, declineToken));
     }
 
@@ -226,12 +228,12 @@ final class BotParticipantPairController {
             responder.answerCallback(callback.getId(), BotMessages.PAIR_REQUEST_ACCEPTED_CALLBACK);
             responder.sendText(
                     recipientId,
-                    BotMessages.pairAccepted(BotMessages.escapeMarkdown(
+                    language -> BotMessages.pairAccepted(language, BotMessages.escapeMarkdown(
                             exchangeService.participant(action.request().requesterId())
                                     .orElseThrow().name())));
             responder.sendText(
                     action.request().requesterId(),
-                    BotMessages.pairAccepted(BotMessages.escapeMarkdown(
+                    language -> BotMessages.pairAccepted(language, BotMessages.escapeMarkdown(
                             exchangeService.participant(recipientId).orElseThrow().name())));
         } catch (IllegalArgumentException exception) {
             invalidateCallbacks(action.request().requesterId(), recipientId);

@@ -75,7 +75,7 @@ final class BotResponder {
         }
     }
 
-    private static String staticText(BotLanguage language, String text) {
+    static String staticText(BotLanguage language, String text) {
         if (language != BotLanguage.ENGLISH) {
             return text;
         }

@@ -25,6 +25,7 @@ public class SecretSantaBot extends TelegramLongPollingBot {
     private final BotButtonController buttonController;
     private final BotCommandController commandController;
     private final BotCommandMenu commandMenu;
+    private final BotResponder responder;
 
     SecretSantaBot(
             String botToken,
@@ -56,7 +57,7 @@ public class SecretSantaBot extends TelegramLongPollingBot {
         };
         PendingDrawService pendingDrawService = new PendingDrawService(
                 pendingDrawStore, exchangeService, organizerService, telegramMessenger);
-        BotResponder responder = new BotResponder(telegramMessenger);
+        this.responder = new BotResponder(telegramMessenger);
         this.commandMenu = new BotCommandMenu(organizerService, telegramMessenger);
         this.buttonController = new BotButtonController(
                 organizerService, exchangeService, pendingDrawService, responder, commandMenu);
@@ -70,6 +71,16 @@ public class SecretSantaBot extends TelegramLongPollingBot {
             OrganizerService organizerService,
             TelegramMessenger telegramMessenger,
             PendingDrawStore pendingDrawStore) {
+        this(botToken, botUsername, organizerService, telegramMessenger, pendingDrawStore, null);
+    }
+
+    SecretSantaBot(
+            String botToken,
+            String botUsername,
+            OrganizerService organizerService,
+            TelegramMessenger telegramMessenger,
+            PendingDrawStore pendingDrawStore,
+            LanguageStore languageStore) {
         super(botToken);
         this.botUsername = botUsername;
         TelegramMessenger messenger = Objects.requireNonNull(telegramMessenger);
@@ -77,7 +88,7 @@ public class SecretSantaBot extends TelegramLongPollingBot {
                 new ExchangeService(organizerService, pendingDrawStore.exchangeStore());
         PendingDrawService pendingDrawService =
                 new PendingDrawService(pendingDrawStore, exchangeService, organizerService, messenger);
-        BotResponder responder = new BotResponder(messenger);
+        this.responder = new BotResponder(messenger, languageStore);
         this.commandMenu = new BotCommandMenu(organizerService, messenger);
         this.buttonController = new BotButtonController(
                 organizerService, exchangeService, pendingDrawService, responder, commandMenu);
@@ -102,7 +113,15 @@ public class SecretSantaBot extends TelegramLongPollingBot {
             return;
         }
         if (update.hasCallbackQuery()) {
-            buttonController.handleCallbackQuery(update.getCallbackQuery());
+            var callback = update.getCallbackQuery();
+            if (callback.getFrom() != null && callback.getFrom().getId() != null) {
+                responder.beginCallback(callback.getFrom().getId());
+            }
+            try {
+                buttonController.handleCallbackQuery(callback);
+            } finally {
+                responder.endCallback();
+            }
             return;
         }
         if (!update.hasMessage()) {

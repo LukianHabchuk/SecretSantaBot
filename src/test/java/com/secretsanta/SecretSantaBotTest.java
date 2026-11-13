@@ -34,6 +34,33 @@ class SecretSantaBotTest {
     Path dataDirectory;
 
     @Test
+    void pairNotificationsUseEachRecipientsSavedLanguage() throws Exception {
+        LanguageStore languages = new LanguageStore(dataDirectory, TEST_DATA_KEY);
+        languages.set(201L, BotLanguage.ENGLISH);
+        languages.set(202L, BotLanguage.UKRAINIAN);
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = new SecretSantaBot(
+                "test-token", "test-bot", createService(), messenger,
+                testPendingDrawStore(), languages);
+        String invite = openRegistration(bot, messenger);
+        bot.onUpdateReceived(update(201L, 201L, "private", "/join " + invite + " Олена"));
+        assertTrue(messenger.sentMessages.getLast().text().contains("You joined"));
+        bot.onUpdateReceived(update(202L, 202L, "private", "/join " + invite + " Sam"));
+
+        bot.onUpdateReceived(callbackUpdate(
+                BotButtons.PAIR_REQUEST_CHOOSE, 202L, 202L, "choose"));
+        String target = callbackDataFor(messenger.sentMessages.getLast().keyboard(), "Олена");
+        bot.onUpdateReceived(callbackUpdate(target, 202L, 202L, "request"));
+
+        assertTrue(messenger.sentMessages.stream().anyMatch(message ->
+                message.chatId() == 201L
+                        && message.text().contains("pair request from **Sam**")));
+        assertTrue(messenger.sentMessages.stream().anyMatch(message ->
+                message.chatId() == 202L
+                        && message.text().contains("Твій запит")));
+    }
+
+    @Test
     void logsOnlySafeActionLabelsWithoutInputOrAssignmentAttempts() throws Exception {
         TestTelegramMessenger messenger = new TestTelegramMessenger();
         SecretSantaBot bot = createBot(createService(), messenger);
