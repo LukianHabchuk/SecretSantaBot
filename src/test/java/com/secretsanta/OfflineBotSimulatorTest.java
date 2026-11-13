@@ -81,7 +81,8 @@ class OfflineBotSimulatorTest {
         assertEquals(ExchangeState.Phase.AWAITING_CONFIRMATIONS, firstDraw.phase());
         assertEquals(1, firstDraw.drawGeneration());
 
-        for (long userId : List.of(100L, 201L, 202L, 203L)) {
+        List<Long> exchangeUserIds = List.of(100L, 201L, 202L, 203L);
+        for (long userId : exchangeUserIds) {
             session.clickButton(userId, "Отримав подарункове завдання");
         }
         session.sendAs(100L, "/start");
@@ -91,7 +92,7 @@ class OfflineBotSimulatorTest {
         ExchangeState replacement = exchangeState();
         assertEquals(2, replacement.drawGeneration());
         assertTrue(replacement.confirmedUserIds().isEmpty());
-        for (long userId : List.of(100L, 201L, 202L, 203L)) {
+        for (long userId : exchangeUserIds) {
             session.clickButton(userId, "Отримав подарункове завдання");
         }
 

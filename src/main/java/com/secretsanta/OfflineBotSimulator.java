@@ -64,11 +64,10 @@ public final class OfflineBotSimulator {
 
         long currentUserId = 100L;
         long nextCallbackId = 1L;
-        String line;
         while (true) {
             output.print("[offline] > ");
             output.flush();
-            line = input.readLine();
+            String line = input.readLine();
             if (line == null) {
                 return;
             }
