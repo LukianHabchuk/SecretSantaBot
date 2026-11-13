@@ -338,6 +338,51 @@ final class ExchangeService {
                 state.confirmedUserIds()));
     }
 
+    synchronized boolean confirmReceipt(long participantId, long drawGeneration)
+            throws IOException {
+        if (state.phase() != ExchangeState.Phase.AWAITING_CONFIRMATIONS
+                || state.drawGeneration() != drawGeneration) {
+            throw new IllegalStateException("Receipt confirmation is not available for this draw.");
+        }
+        requireRegisteredParticipant(participantId);
+        if (state.confirmedUserIds().contains(participantId)) {
+            return false;
+        }
+
+        Set<Long> confirmedUserIds = new java.util.HashSet<>(state.confirmedUserIds());
+        confirmedUserIds.add(participantId);
+        persist(new ExchangeState(
+                state.phase(),
+                null,
+                state.participants(),
+                List.of(),
+                state.drawGeneration(),
+                state.assignments(),
+                state.deliveredUserIds(),
+                confirmedUserIds));
+        return true;
+    }
+
+    synchronized boolean cleanupExchange(long organizerId, boolean confirmed)
+            throws IOException {
+        if (!organizerService.isOrganizer(organizerId)) {
+            throw new SecurityException("Only the organizer can clean up an exchange.");
+        }
+        if (!confirmed) {
+            return false;
+        }
+        Set<Long> participantIds = state.participants().stream()
+                .map(ExchangeState.Participant::userId)
+                .collect(java.util.stream.Collectors.toSet());
+        if (state.phase() != ExchangeState.Phase.AWAITING_CONFIRMATIONS
+                || !state.confirmedUserIds().equals(participantIds)) {
+            throw new IllegalStateException(
+                    "Every participant must confirm receipt before cleanup.");
+        }
+        persist(ExchangeState.empty());
+        return true;
+    }
+
     synchronized boolean hasActiveDraw() {
         return state.phase() == ExchangeState.Phase.DELIVERING
                 || state.phase() == ExchangeState.Phase.AWAITING_CONFIRMATIONS;

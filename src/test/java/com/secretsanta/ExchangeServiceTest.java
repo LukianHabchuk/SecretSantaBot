@@ -312,6 +312,85 @@ class ExchangeServiceTest {
         assertEquals(1, exchange.state().pairRequests().size());
     }
 
+    @Test
+    void participantReceiptIsBoundToCurrentDrawAndIdempotent() throws Exception {
+        ExchangeService exchange = createCompletedDraw(createOrganizerService());
+        long generation = exchange.state().drawGeneration();
+
+        assertTrue(exchange.confirmReceipt(201L, generation));
+        assertFalse(exchange.confirmReceipt(201L, generation));
+        assertEquals(java.util.Set.of(201L), exchange.state().confirmedUserIds());
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> exchange.confirmReceipt(999L, generation));
+        assertThrows(
+                IllegalStateException.class,
+                () -> exchange.confirmReceipt(202L, generation + 1));
+    }
+
+    @Test
+    void cleanupRequiresOrganizerAndEveryParticipantConfirmation() throws Exception {
+        OrganizerService organizerService = createOrganizerService();
+        ExchangeService exchange = createCompletedDraw(organizerService);
+        long generation = exchange.state().drawGeneration();
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> exchange.cleanupExchange(100L, true));
+        assertThrows(
+                SecurityException.class,
+                () -> exchange.cleanupExchange(201L, true));
+        assertFalse(exchange.cleanupExchange(100L, false));
+        assertEquals(ExchangeState.Phase.AWAITING_CONFIRMATIONS, exchange.state().phase());
+
+        exchange.state().participants().forEach(participant -> {
+            try {
+                exchange.confirmReceipt(participant.userId(), generation);
+            } catch (IOException exception) {
+                throw new AssertionError(exception);
+            }
+        });
+        assertTrue(exchange.cleanupExchange(100L, true));
+
+        assertEquals(ExchangeState.Phase.EMPTY, exchange.state().phase());
+        assertTrue(exchange.participants().isEmpty());
+        assertTrue(organizerService.isOrganizer(100L));
+    }
+
+    @Test
+    void receiptConfirmationsSurviveRestartAndCleanupRequiresAllParticipants() throws Exception {
+        OrganizerService organizerService = createOrganizerService();
+        ExchangeService exchange = createCompletedDraw(organizerService);
+        long generation = exchange.state().drawGeneration();
+        exchange.confirmReceipt(100L, generation);
+        exchange.confirmReceipt(201L, generation);
+
+        ExchangeService restartedExchange = new ExchangeService(
+                organizerService, new ExchangeStore(dataDirectory, TEST_DATA_KEY));
+
+        assertEquals(
+                java.util.Set.of(100L, 201L),
+                restartedExchange.state().confirmedUserIds());
+        assertThrows(
+                IllegalStateException.class,
+                () -> restartedExchange.cleanupExchange(100L, true));
+    }
+
+    private ExchangeService createCompletedDraw(OrganizerService organizerService)
+            throws Exception {
+        ExchangeService exchange = createExchangeWithParticipants(organizerService);
+        exchange.beginDraw(List.of(
+                new ExchangeState.Assignment(100L, 201L),
+                new ExchangeState.Assignment(201L, 202L),
+                new ExchangeState.Assignment(202L, 203L),
+                new ExchangeState.Assignment(203L, 204L),
+                new ExchangeState.Assignment(204L, 100L)));
+        for (long userId : List.of(100L, 201L, 202L, 203L, 204L)) {
+            exchange.markAssignmentDelivered(userId);
+        }
+        return exchange;
+    }
+
     private OrganizerService createOrganizerService() throws Exception {
         OrganizerService service =
                 new OrganizerService(new OrganizerStore(dataDirectory), "setup-code");
