@@ -9,9 +9,6 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 final class LanguageSelection {
     private static final Logger LOGGER = Logger.getLogger(LanguageSelection.class.getName());
-    private static final String ENGLISH = "language:en";
-    private static final String UKRAINIAN = "language:uk";
-
     private final LanguageStore store;
     private final TelegramMessenger messenger;
     private final Set<Long> awaitingChoice = new HashSet<>();
@@ -38,8 +35,8 @@ final class LanguageSelection {
     }
 
     boolean choose(long userId, long chatId, String data, String callbackId) {
-        BotLanguage language = ENGLISH.equals(data) ? BotLanguage.ENGLISH
-                : UKRAINIAN.equals(data) ? BotLanguage.UKRAINIAN : null;
+        BotLanguage language = BotButtons.LANGUAGE_ENGLISH.equals(data) ? BotLanguage.ENGLISH
+                : BotButtons.LANGUAGE_UKRAINIAN.equals(data) ? BotLanguage.UKRAINIAN : null;
         if (chatId != userId || language == null || !awaitingChoice.contains(userId)) {
             answer(callbackId, "This selection is unavailable / Вибір недоступний.");
             return false;

@@ -6,6 +6,8 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMa
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 
 final class BotButtons {
+    static final String LANGUAGE_ENGLISH = "language:en";
+    static final String LANGUAGE_UKRAINIAN = "language:ua";
     static final String ONBOARDING_PREFIX = "onboarding:";
     static final String CLAIM = ONBOARDING_PREFIX + "claim";
     static final String JOIN = ONBOARDING_PREFIX + "join";
@@ -39,8 +41,8 @@ final class BotButtons {
 
     static InlineKeyboardMarkup languageSelection() {
         return keyboard(List.of(List.of(
-                button("English", "language:en"),
-                button("Українська", "language:uk"))));
+                button("English", LANGUAGE_ENGLISH),
+                button("Українська", LANGUAGE_UKRAINIAN))));
     }
 
     static InlineKeyboardMarkup participantStartMenu(boolean organizerAvailable) {

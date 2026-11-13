@@ -44,8 +44,12 @@ class LanguageSelectionTest {
         selection.prompt(101);
         assertFalse(selection.choose(101, 101, "language:fr", "unknown"));
         assertFalse(selection.choose(101, 101, null, "missing"));
+        assertFalse(selection.choose(101, 101, "language:uk", "old-code"));
         assertTrue(store.get(101).isEmpty());
-        assertTrue(selection.choose(101, 101, "language:uk", "selected"));
+        assertTrue(messenger.keyboard.getKeyboard().stream()
+                .flatMap(List::stream)
+                .anyMatch(button -> button.getCallbackData().equals("language:ua")));
+        assertTrue(selection.choose(101, 101, "language:ua", "selected"));
 
         assertTrue(selection.forget(101));
         assertTrue(new LanguageStore(directory, new byte[32]).get(101).isEmpty());
