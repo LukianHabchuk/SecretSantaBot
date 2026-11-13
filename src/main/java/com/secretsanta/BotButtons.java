@@ -37,10 +37,13 @@ final class BotButtons {
 
     private BotButtons() {}
 
-    static InlineKeyboardMarkup participantStartMenu() {
-        return keyboard(List.of(
-                List.of(button("Я організатор", CLAIM)),
-                List.of(button("Приєднатися за кодом", JOIN))));
+    static InlineKeyboardMarkup participantStartMenu(boolean organizerAvailable) {
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+        if (organizerAvailable) {
+            rows.add(List.of(button("Я організатор", CLAIM)));
+        }
+        rows.add(List.of(button("Приєднатися за кодом", JOIN)));
+        return keyboard(rows);
     }
 
     static InlineKeyboardMarkup participantPairMenu() {

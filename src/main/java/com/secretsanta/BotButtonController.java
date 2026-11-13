@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.OptionalLong;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.logging.Level;
@@ -114,18 +115,23 @@ final class BotButtonController {
         pendingCleanupTokens.remove(userId);
         pendingReplacementTokens.remove(userId);
         try {
-            boolean organizer = organizerService.isOrganizer(userId);
+            OptionalLong organizerId = organizerService.organizerId();
+            boolean organizer = organizerId.isPresent() && organizerId.getAsLong() == userId;
             boolean registeredParticipant = exchangeService.participant(userId).isPresent();
             ExchangeState state = exchangeService.state();
             responder.sendWithKeyboard(
                     chatId,
-                    organizer ? BotMessages.ORGANIZER_START : BotMessages.PARTICIPANT_START,
+                    organizer
+                            ? BotMessages.ORGANIZER_START
+                            : organizerId.isPresent()
+                                    ? BotMessages.PARTICIPANT_JOIN_START
+                                    : BotMessages.PARTICIPANT_START,
                     organizer
                             ? BotButtons.organizerMenu(state, registeredParticipant)
                             : state.phase() == ExchangeState.Phase.REGISTRATION_OPEN
                                             && registeredParticipant
                                     ? BotButtons.participantPairMenu()
-                                    : BotButtons.participantStartMenu());
+                                    : BotButtons.participantStartMenu(organizerId.isEmpty()));
         } catch (IOException exception) {
             LOGGER.log(Level.SEVERE, BotLogMessages.ONBOARDING_STATE_READ_FAILED, exception);
             responder.sendText(chatId, BotMessages.MENU_LOAD_FAILED);

@@ -171,6 +171,7 @@ In a private chat with the bot, the organizer sends `/start`, selects **Я
 організатор**, and enters the one-time setup code. The bot stores only the
 organizer's Telegram user ID in
 `<user.home>/.secretsanta-telegram-bot/organizer-id`; later claims are rejected.
+Once claimed, new `/start` menus no longer offer organizer setup to other users.
 The organizer then selects **Відкрити реєстрацію** and receives the invite code
 privately. The organizer is automatically included in the participant list.
 Participants select **Приєднатися за кодом**, enter the invite code, and confirm

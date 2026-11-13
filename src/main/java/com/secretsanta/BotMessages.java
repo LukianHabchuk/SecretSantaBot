@@ -11,6 +11,8 @@ final class BotMessages {
             "🎅 **Таємний Санта**\n\nОбери дію для свого обміну.";
     static final String PARTICIPANT_START =
             "🎅 **Таємний Санта**\n\nСтвори обмін або приєднайся за запрошенням.";
+    static final String PARTICIPANT_JOIN_START =
+            "🎅 **Таємний Санта**\n\nПриєднайся до обміну за запрошенням.";
     static final String ORGANIZER_CLAIMED = "✅ Права організатора підтверджено.";
     static final String CLAIM_FAILED =
             "❌ Не вдалося підтвердити права організатора. Перевір код або звернись до власника.";

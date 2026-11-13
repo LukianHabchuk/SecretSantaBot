@@ -102,6 +102,25 @@ class SecretSantaBotTest {
     }
 
     @Test
+    void startHidesOrganizerClaimAfterItHasBeenClaimed() throws Exception {
+        OrganizerService organizerService = createService();
+        organizerService.claim(100L, "setup-code");
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+
+        bot.onUpdateReceived(update(201L, 201L, "private", "/start"));
+
+        SentMessage menu = messenger.sentMessages.getLast();
+        assertTrue(menu.keyboard().getKeyboard().stream()
+                .flatMap(List::stream)
+                .noneMatch(button -> button.getCallbackData().equals("onboarding:claim")));
+        assertTrue(menu.keyboard().getKeyboard().stream()
+                .flatMap(List::stream)
+                .anyMatch(button -> button.getCallbackData().equals("onboarding:join")));
+        assertFalse(menu.text().contains("Створи обмін"));
+    }
+
+    @Test
     void startInGroupDoesNotOfferOnboardingButtons() {
         TestTelegramMessenger messenger = new TestTelegramMessenger();
         SecretSantaBot bot = createBot(createService(), messenger);
