@@ -45,6 +45,59 @@ final class BotButtons {
                 button("Українська", LANGUAGE_UKRAINIAN))));
     }
 
+    static InlineKeyboardMarkup localize(BotLanguage language, InlineKeyboardMarkup original) {
+        if (language != BotLanguage.ENGLISH || original == null) {
+            return original;
+        }
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+        for (List<InlineKeyboardButton> row : original.getKeyboard()) {
+            List<InlineKeyboardButton> translated = new ArrayList<>();
+            for (InlineKeyboardButton item : row) {
+                String label = englishLabel(item.getCallbackData());
+                translated.add(label == null ? item : button(label, item.getCallbackData()));
+            }
+            rows.add(translated);
+        }
+        return keyboard(rows);
+    }
+
+    private static String englishLabel(String data) {
+        if (data == null) {
+            return null;
+        }
+        String fixed = switch (data) {
+            case CLAIM -> "I'm the organizer";
+            case JOIN -> "Join with a code";
+            case OPEN -> "Open registration";
+            case RESET -> "Reset exchange";
+            case PAIR_REQUEST_CHOOSE -> "Request a partner";
+            case PAIR_REQUEST_STATUS -> "My pair request";
+            case ORGANIZER_PAIR -> "Manage pairs";
+            case ORGANIZER_ROSTER -> "Participants";
+            case ORGANIZER_RUN_DRAW -> "Run or retry the draw";
+            case ORGANIZER_DRAW_STATUS -> "Exchange status";
+            case ORGANIZER_REPLACE_DRAW -> "Run a new draw";
+            case ORGANIZER_CLEANUP -> "Delete exchange";
+            default -> null;
+        };
+        if (fixed != null) {
+            return fixed;
+        }
+        if (data.startsWith(JOIN_CONFIRM_PREFIX)) return "Confirm name";
+        if (data.startsWith(JOIN_EDIT_PREFIX)) return "Edit name";
+        if (data.startsWith(RESET_CONFIRM_PREFIX)) return "Yes, reset";
+        if (data.startsWith(RESET_CANCEL_PREFIX)) return "Cancel";
+        if (data.startsWith(CLEANUP_CONFIRM_PREFIX)) return "Yes, delete exchange";
+        if (data.startsWith(CLEANUP_CANCEL_PREFIX)) return "Cancel";
+        if (data.startsWith(REPLACE_DRAW_CONFIRM_PREFIX)) return "Yes, replace assignments";
+        if (data.startsWith(REPLACE_DRAW_CANCEL_PREFIX)) return "Cancel";
+        if (data.startsWith(DRAW_RECEIVED_PREFIX)) return "I received my assignment";
+        if (data.startsWith(PAIR_REQUEST_ACCEPT_PREFIX)) return "Accept pair";
+        if (data.startsWith(PAIR_REQUEST_DECLINE_PREFIX)) return "Decline";
+        if (data.startsWith(PAIR_REQUEST_CANCEL_PREFIX)) return "Cancel request";
+        return null;
+    }
+
     static InlineKeyboardMarkup participantStartMenu(boolean organizerAvailable) {
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
         if (organizerAvailable) {
