@@ -161,11 +161,15 @@ private assignment message. The organizer's **Статус обміну** button
 delivery and confirmation progress without revealing recipients. After every
 participant confirms, the organizer can choose **Очистити обмін** and must
 explicitly confirm deletion; this removes exchange data but preserves organizer
-identity. Legacy encrypted `pending-draw.enc` data is migrated before normal bot
-operations; partial deliveries resume with the original assignments. If
-Telegram accepted a message just before the process stopped, retrying may send
-that same assignment again. Run only one bot process against a data directory
-at a time.
+identity. After the current draw is fully delivered, the organizer can instead
+choose **Провести нове жеребкування** and explicitly confirm; the bot saves a
+new draw generation before privately notifying everyone of their replacement
+recipient. Previous receipt buttons then become stale, and incomplete
+replacement delivery resumes with the same assignments using `/run`. Legacy
+encrypted `pending-draw.enc` data is migrated before normal bot operations.
+If Telegram accepted a message just before the process stopped, retrying may
+send that same assignment again. Run only one bot process against a data
+directory at a time.
 
 ## Project layout
 

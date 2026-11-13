@@ -973,6 +973,110 @@ class SecretSantaBotTest {
     }
 
     @Test
+    void organizerMustConfirmReplacementAndOldReceiptButtonsBecomeStale() throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+        String inviteCode = openRegistration(bot, messenger);
+        for (long userId = 201L; userId <= 203L; userId++) {
+            bot.onUpdateReceived(update(
+                    userId, userId, "private", "/join " + inviteCode + " Guest " + userId));
+        }
+        bot.onUpdateReceived(update(100L, 100L, "private", "/run"));
+        ExchangeState originalDraw =
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow();
+        String staleReceipt = callbackDataFor(
+                messenger.sentMessages.stream()
+                        .filter(message -> message.chatId() == 201L)
+                        .filter(message -> message.keyboard() != null)
+                        .findFirst()
+                        .orElseThrow()
+                        .keyboard(),
+                "Отримав подарункове завдання");
+
+        bot.onUpdateReceived(update(100L, 100L, "private", "/start"));
+        String replaceCallback = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Провести нове жеребкування");
+        bot.onUpdateReceived(callbackUpdate(replaceCallback, 100L, 100L, "replace"));
+        assertEquals(
+                originalDraw.drawGeneration(),
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY)
+                        .load()
+                        .orElseThrow()
+                        .drawGeneration());
+
+        String replacementCancel = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Скасувати");
+        String cancelledConfirmation = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Так, замінити розподіл");
+        bot.onUpdateReceived(callbackUpdate(
+                replacementCancel, 100L, 100L, "cancel-replacement"));
+        bot.onUpdateReceived(callbackUpdate(
+                cancelledConfirmation, 100L, 100L, "stale-replacement"));
+        assertEquals(
+                originalDraw.drawGeneration(),
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY)
+                        .load()
+                        .orElseThrow()
+                        .drawGeneration());
+
+        bot.onUpdateReceived(callbackUpdate(replaceCallback, 100L, 100L, "replace-again"));
+        String confirmation = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Так, замінити розподіл");
+        bot.onUpdateReceived(callbackUpdate(
+                confirmation, 201L, 201L, "unauthorized-replacement"));
+        assertEquals(
+                originalDraw.drawGeneration(),
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY)
+                        .load()
+                        .orElseThrow()
+                        .drawGeneration());
+
+        bot.onUpdateReceived(callbackUpdate(confirmation, 100L, 100L, "confirm-replacement"));
+        ExchangeState replacement =
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow();
+        assertEquals(originalDraw.drawGeneration() + 1, replacement.drawGeneration());
+        assertEquals(ExchangeState.Phase.AWAITING_CONFIRMATIONS, replacement.phase());
+        assertTrue(replacement.confirmedUserIds().isEmpty());
+
+        bot.onUpdateReceived(callbackUpdate(staleReceipt, 201L, 201L, "old-receipt"));
+        assertTrue(messenger.callbackAnswers.getLast().text().contains("неактивне"));
+        assertTrue(new ExchangeStore(dataDirectory, TEST_DATA_KEY)
+                .load()
+                .orElseThrow()
+                .confirmedUserIds()
+                .isEmpty());
+    }
+
+    @Test
+    void replacementControlIsUnavailableWhileOriginalDeliveryIsIncomplete() throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+        String inviteCode = openRegistration(bot, messenger);
+        for (long userId = 201L; userId <= 203L; userId++) {
+            bot.onUpdateReceived(update(
+                    userId, userId, "private", "/join " + inviteCode + " Guest " + userId));
+        }
+        messenger.failChatId = 202L;
+        bot.onUpdateReceived(update(100L, 100L, "private", "/run"));
+        bot.onUpdateReceived(update(100L, 100L, "private", "/start"));
+
+        assertFalse(messenger.sentMessages.getLast().keyboard().getKeyboard().stream()
+                .flatMap(List::stream)
+                .anyMatch(button -> button.getCallbackData()
+                        .equals(BotButtons.ORGANIZER_REPLACE_DRAW)));
+        bot.onUpdateReceived(callbackUpdate(
+                BotButtons.ORGANIZER_REPLACE_DRAW, 100L, 100L, "premature-replacement"));
+
+        ExchangeState state =
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow();
+        assertEquals(ExchangeState.Phase.DELIVERING, state.phase());
+        assertEquals(1, state.drawGeneration());
+        assertTrue(messenger.sentMessages.getLast().text().contains("достав"));
+    }
+
+    @Test
     void organizerStatusShowsDeliveryAndReceiptProgressWithoutAssignments() throws Exception {
         OrganizerService organizerService = createService();
         TestTelegramMessenger messenger = new TestTelegramMessenger();

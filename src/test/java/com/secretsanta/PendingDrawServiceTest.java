@@ -246,6 +246,7 @@ class PendingDrawServiceTest {
     void replacementDrawIncrementsGenerationAndClearsPreviousConfirmations() throws Exception {
         OrganizerService organizerService = createOrganizerService();
         ExchangeService exchangeService = createExchangeWithThreeParticipants(organizerService);
+        exchangeService.pair(201L, 202L);
         RecordingMessenger messenger = new RecordingMessenger(null);
         PendingDrawService service = new PendingDrawService(
                 new PendingDrawStore(dataDirectory, KEY),
@@ -270,6 +271,9 @@ class PendingDrawServiceTest {
                         .map(ExchangeState.Participant::userId)
                         .collect(java.util.stream.Collectors.toSet()),
                 replacement.deliveredUserIds());
+        assertTrue(replacement.assignments().stream().noneMatch(assignment ->
+                (assignment.giverId() == 201L && assignment.receiverId() == 202L)
+                        || (assignment.giverId() == 202L && assignment.receiverId() == 201L)));
         List<SentMessage> replacementMessages = messenger.messages().subList(4, 8);
         assertEquals(4, replacementMessages.size());
         for (ExchangeState.Assignment assignment : replacement.assignments()) {
@@ -287,6 +291,88 @@ class PendingDrawServiceTest {
             assertTrue(message.callbackData().contains(
                     BotButtons.DRAW_RECEIVED_PREFIX + replacement.drawGeneration()));
         }
+    }
+
+    @Test
+    void replacementStateIsPersistedBeforeSendingAnyReplacementAssignment() throws Exception {
+        OrganizerService organizerService = createOrganizerService();
+        ExchangeService exchangeService = createExchangeWithThreeParticipants(organizerService);
+        ExchangeStore exchangeStore = new ExchangeStore(dataDirectory, KEY);
+        new PendingDrawService(
+                        new PendingDrawStore(dataDirectory, KEY),
+                        exchangeService,
+                        organizerService,
+                        new RecordingMessenger(null))
+                .run();
+
+        boolean[] firstReplacementSend = {true};
+        TelegramMessenger verifyingMessenger = new TelegramMessenger() {
+            @Override
+            public void sendMessage(
+                    long chatId, String text, InlineKeyboardMarkup keyboard)
+                    throws TelegramApiException {
+                try {
+                    ExchangeState persisted = exchangeStore.load().orElseThrow();
+                    assertEquals(ExchangeState.Phase.DELIVERING, persisted.phase());
+                    assertEquals(2, persisted.drawGeneration());
+                    assertEquals(4, persisted.assignments().size());
+                    if (firstReplacementSend[0]) {
+                        assertTrue(persisted.deliveredUserIds().isEmpty());
+                        firstReplacementSend[0] = false;
+                    }
+                } catch (IOException exception) {
+                    throw new TelegramApiException(exception);
+                }
+            }
+
+            @Override
+            public void answerCallback(String callbackQueryId, String text) {}
+        };
+        PendingDrawService replacementService = new PendingDrawService(
+                new PendingDrawStore(dataDirectory, KEY),
+                exchangeService,
+                organizerService,
+                verifyingMessenger);
+
+        assertEquals(
+                PendingDrawService.Status.COMPLETED,
+                replacementService.replaceDraw().status());
+    }
+
+    @Test
+    void failedReplacementPersistenceKeepsThePreviousDrawAndSendsNothing() throws Exception {
+        OrganizerService organizerService = createOrganizerService();
+        ExchangeService originalExchangeService =
+                createExchangeWithThreeParticipants(organizerService);
+        new PendingDrawService(
+                        new PendingDrawStore(dataDirectory, KEY),
+                        originalExchangeService,
+                        organizerService,
+                        new RecordingMessenger(null))
+                .run();
+        ExchangeState originalDraw = originalExchangeService.state();
+        ExchangeService failingExchangeService = new ExchangeService(
+                organizerService,
+                new ExchangeStore(
+                        dataDirectory,
+                        KEY,
+                        (source, target) -> {
+                            throw new IOException("Simulated replacement state write failure.");
+                        }));
+        RecordingMessenger messenger = new RecordingMessenger(null);
+        PendingDrawService service = new PendingDrawService(
+                new PendingDrawStore(dataDirectory, KEY),
+                failingExchangeService,
+                organizerService,
+                messenger);
+
+        assertThrows(IOException.class, service::replaceDraw);
+
+        assertTrue(messenger.messages().isEmpty());
+        assertEquals(originalDraw, failingExchangeService.state());
+        assertEquals(
+                originalDraw,
+                new ExchangeStore(dataDirectory, KEY).load().orElseThrow());
     }
 
     @Test

@@ -147,6 +147,24 @@ final class BotMessages {
             "Підтвердження доступне лише учасникам поточного розподілу.";
     static final String DRAW_RECEIPT_FAILED = "Не вдалося зберегти підтвердження.";
     static final String DRAW_STATUS_CALLBACK = "Статус обміну.";
+    static final String REPLACEMENT_CONFIRMATION =
+            "Провести нове жеребкування? Поточні завдання буде замінено для всіх учасників.";
+    static final String REPLACEMENT_CONFIRMATION_CALLBACK =
+            "Підтверди або скасуй нове жеребкування.";
+    static final String REPLACEMENT_CANCELLED_CALLBACK = "Нове жеребкування скасовано.";
+    static final String REPLACEMENT_CANCELLED = "Нове жеребкування скасовано.";
+    static final String REPLACEMENT_UNAVAILABLE_CALLBACK =
+            "Нове жеребкування доступне лише після повної доставки поточного.";
+    static final String REPLACEMENT_UNAVAILABLE =
+            "❌ Спочатку потрібно доставити поточні завдання всім учасникам.";
+    static final String REPLACEMENT_COMPLETED =
+            "✅ Новий розподіл збережено й доставлено всім учасникам.";
+    static final String REPLACEMENT_COMPLETED_CALLBACK = "Нове жеребкування завершено.";
+    static final String REPLACEMENT_PENDING_CALLBACK = "Нове жеребкування очікує доставки.";
+    static final String REPLACEMENT_TOO_FEW_CALLBACK = "Недостатньо учасників.";
+    static final String REPLACEMENT_FAILED =
+            "❌ Не вдалося безпечно зберегти або доставити новий розподіл. Якщо новий "
+                    + "розподіл уже почався, повтори `/run`; інакше спробуй підтвердити заміну ще раз.";
     static final String CLEANUP_CONFIRMATION =
             "Усі учасники підтвердили отримання. Видалити дані поточного обміну?";
     static final String CLEANUP_CONFIRMATION_CALLBACK = "Підтверди або скасуй очищення.";
@@ -207,6 +225,22 @@ final class BotMessages {
             case TOO_FEW_PARTICIPANTS -> RUN_TOO_FEW;
             case PENDING -> openPendingDeliveries(result.failedDeliveries());
             case COMPLETED -> RUN_COMPLETED;
+        };
+    }
+
+    static String replacementDrawResult(PendingDrawService.Result result) {
+        return switch (result.status()) {
+            case TOO_FEW_PARTICIPANTS -> RUN_TOO_FEW;
+            case PENDING -> openPendingDeliveries(result.failedDeliveries());
+            case COMPLETED -> REPLACEMENT_COMPLETED;
+        };
+    }
+
+    static String replacementDrawCallback(PendingDrawService.Result result) {
+        return switch (result.status()) {
+            case TOO_FEW_PARTICIPANTS -> REPLACEMENT_TOO_FEW_CALLBACK;
+            case PENDING -> REPLACEMENT_PENDING_CALLBACK;
+            case COMPLETED -> REPLACEMENT_COMPLETED_CALLBACK;
         };
     }
 

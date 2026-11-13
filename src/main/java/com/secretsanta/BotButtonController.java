@@ -28,6 +28,7 @@ final class BotButtonController {
     private final Map<Long, PendingJoin> pendingJoins = new HashMap<>();
     private final Map<Long, String> pendingResetTokens = new HashMap<>();
     private final Map<Long, String> pendingCleanupTokens = new HashMap<>();
+    private final Map<Long, String> pendingReplacementTokens = new HashMap<>();
     private final Map<String, Consumer<CallbackQuery>> onboardingActions;
     private final Map<String, Consumer<CallbackQuery>> organizerPairActions;
     private final BotParticipantPairController participantPairController;
@@ -59,6 +60,7 @@ final class BotButtonController {
                 BotButtons.ORGANIZER_ROSTER, this::showOrganizerRoster,
                 BotButtons.ORGANIZER_RUN_DRAW, this::runDrawFromButton,
                 BotButtons.ORGANIZER_DRAW_STATUS, this::showDrawStatus,
+                BotButtons.ORGANIZER_REPLACE_DRAW, this::requestReplacementConfirmation,
                 BotButtons.ORGANIZER_CLEANUP, this::requestCleanupConfirmation);
         registrationActions = Map.of(
                 ExchangeService.RegistrationResult.REGISTERED,
@@ -110,6 +112,7 @@ final class BotButtonController {
         pendingJoins.remove(userId);
         pendingResetTokens.remove(userId);
         pendingCleanupTokens.remove(userId);
+        pendingReplacementTokens.remove(userId);
         try {
             boolean organizer = organizerService.isOrganizer(userId);
             boolean registeredParticipant = exchangeService.participant(userId).isPresent();
@@ -211,6 +214,12 @@ final class BotButtonController {
             confirmCleanup(callback);
             return;
         }
+        if (data != null
+                && (data.startsWith(BotButtons.REPLACE_DRAW_CONFIRM_PREFIX)
+                        || data.startsWith(BotButtons.REPLACE_DRAW_CANCEL_PREFIX))) {
+            confirmReplacementDraw(callback);
+            return;
+        }
         if (data != null && data.startsWith(BotButtons.PAIR_PREFIX)) {
             handlePairingCallback(callback);
             return;
@@ -310,6 +319,60 @@ final class BotButtonController {
                 callback.getFrom().getId(),
                 BotMessages.drawStatus(exchangeService.state()));
         responder.answerCallback(callback.getId(), BotMessages.DRAW_STATUS_CALLBACK);
+    }
+
+    private void requestReplacementConfirmation(CallbackQuery callback) {
+        long userId = callback.getFrom().getId();
+        if (!exchangeService.canReplaceDraw()) {
+            responder.answerCallback(
+                    callback.getId(), BotMessages.REPLACEMENT_UNAVAILABLE_CALLBACK);
+            responder.sendText(userId, BotMessages.REPLACEMENT_UNAVAILABLE);
+            return;
+        }
+        String token = newToken();
+        pendingReplacementTokens.put(userId, token);
+        responder.sendWithKeyboard(
+                userId,
+                BotMessages.REPLACEMENT_CONFIRMATION,
+                BotButtons.replacementDrawConfirmation(token));
+        responder.answerCallback(
+                callback.getId(), BotMessages.REPLACEMENT_CONFIRMATION_CALLBACK);
+    }
+
+    private void confirmReplacementDraw(CallbackQuery callback) {
+        long userId = callback.getFrom().getId();
+        String data = callback.getData();
+        boolean cancel = data.startsWith(BotButtons.REPLACE_DRAW_CANCEL_PREFIX);
+        String prefix = cancel
+                ? BotButtons.REPLACE_DRAW_CANCEL_PREFIX
+                : BotButtons.REPLACE_DRAW_CONFIRM_PREFIX;
+        String token = data.substring(prefix.length());
+        if (token.isBlank() || !Objects.equals(pendingReplacementTokens.get(userId), token)) {
+            responder.answerCallback(callback.getId(), BotMessages.STALE_BUTTON);
+            return;
+        }
+        pendingReplacementTokens.remove(userId);
+        if (cancel) {
+            responder.answerCallback(
+                    callback.getId(), BotMessages.REPLACEMENT_CANCELLED_CALLBACK);
+            responder.sendText(userId, BotMessages.REPLACEMENT_CANCELLED);
+            return;
+        }
+        try {
+            PendingDrawService.Result result = pendingDrawService.replaceDraw();
+            responder.answerCallback(
+                    callback.getId(), BotMessages.replacementDrawCallback(result));
+            responder.sendText(userId, BotMessages.replacementDrawResult(result));
+            showStartMenu(userId, userId, true);
+        } catch (IllegalStateException exception) {
+            responder.answerCallback(
+                    callback.getId(), BotMessages.REPLACEMENT_UNAVAILABLE_CALLBACK);
+            responder.sendText(userId, BotMessages.REPLACEMENT_UNAVAILABLE);
+        } catch (IOException exception) {
+            LOGGER.log(Level.SEVERE, BotLogMessages.REPLACEMENT_DRAW_FAILED, exception);
+            responder.answerCallback(callback.getId(), BotMessages.REPLACEMENT_FAILED);
+            responder.sendText(userId, BotMessages.REPLACEMENT_FAILED);
+        }
     }
 
     private void requestCleanupConfirmation(CallbackQuery callback) {

@@ -250,18 +250,18 @@ draw before cleanup. Generate a complete replacement for everyone, notify all
 participants, and bind receipt callbacks to the new generation.
 
 **Acceptance criteria:**
-- [ ] Replacement is unavailable during incomplete delivery and requires
+- [x] Replacement is unavailable during incomplete delivery and requires
   explicit organizer confirmation.
-- [ ] A full replacement is persisted before delivery, supersedes all previous
+- [x] A full replacement is persisted before delivery, supersedes all previous
   assignments, and is retried unchanged if any send fails.
-- [ ] All participants receive a private replacement notification and only
+- [x] All participants receive a private replacement notification and only
   their current recipient; previous confirmations are cleared.
-- [ ] Stale prior-draw confirmation callbacks cannot acknowledge the new draw.
+- [x] Stale prior-draw confirmation callbacks cannot acknowledge the new draw.
 
 **Verification:**
-- [ ] Tests cover valid replacement constraints, delivery failure/restart,
+- [x] Tests cover valid replacement constraints, delivery failure/restart,
   generation changes, cleared confirmations, stale callbacks, and privacy.
-- [ ] `mvn test` passes.
+- [x] `mvn test` passes.
 
 **Dependencies:** Task 13
 
