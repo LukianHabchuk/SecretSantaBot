@@ -26,6 +26,32 @@ class PendingDrawServiceTest {
     Path dataDirectory;
 
     @Test
+    void deliversDrawAndReplacementInEachRecipientsLanguage() throws Exception {
+        OrganizerService organizer = createOrganizerService();
+        ExchangeService exchange = createExchangeWithThreeParticipants(organizer);
+        LanguageStore languages = new LanguageStore(dataDirectory, KEY);
+        languages.set(201L, BotLanguage.ENGLISH);
+        languages.set(202L, BotLanguage.UKRAINIAN);
+        RecordingMessenger messenger = new RecordingMessenger(null);
+        PendingDrawService service = new PendingDrawService(
+                new PendingDrawStore(dataDirectory, KEY), exchange, organizer, messenger, languages);
+
+        assertEquals(PendingDrawService.Status.COMPLETED, service.run().status());
+        SentMessage english = messenger.messages().stream()
+                .filter(message -> message.chatId() == 201L).findFirst().orElseThrow();
+        SentMessage ukrainian = messenger.messages().stream()
+                .filter(message -> message.chatId() == 202L).findFirst().orElseThrow();
+        assertTrue(english.text().contains("Your assignment"));
+        assertEquals("I received my assignment", english.buttonLabel());
+        assertTrue(ukrainian.text().contains("Твоя ціль"));
+
+        assertEquals(PendingDrawService.Status.COMPLETED, service.replaceDraw().status());
+        SentMessage replacement = messenger.messages().stream()
+                .filter(message -> message.chatId() == 201L).reduce((a, b) -> b).orElseThrow();
+        assertTrue(replacement.text().contains("replaces your previous assignment"));
+    }
+
+    @Test
     void logsCompletionOnlyAfterAllDeliveriesAndOnlyOnce() throws Exception {
         OrganizerService organizerService = createOrganizerService();
         ExchangeService exchangeService = createExchangeWithThreeParticipants(organizerService);
@@ -605,7 +631,7 @@ class PendingDrawServiceTest {
         return new ExchangeService(organizerService, new ExchangeStore(dataDirectory, KEY));
     }
 
-    private record SentMessage(long chatId, String text, String callbackData) {}
+    private record SentMessage(long chatId, String text, String callbackData, String buttonLabel) {}
 
     private static final class RecordingMessenger implements TelegramMessenger {
         private final List<SentMessage> sentMessages = new ArrayList<>();
@@ -630,7 +656,8 @@ class PendingDrawServiceTest {
                             .flatMap(List::stream)
                             .map(button -> button.getCallbackData())
                             .findFirst()
-                            .orElse("")));
+                            .orElse(""),
+                    keyboard.getKeyboard().getFirst().getFirst().getText()));
             if (failChatId != null && failChatId == chatId) {
                 throw new TelegramApiException("Simulated delivery failure.");
             }

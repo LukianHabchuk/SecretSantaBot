@@ -24,16 +24,27 @@ final class PendingDrawService {
     private final ExchangeService exchangeService;
     private final OrganizerService organizerService;
     private final TelegramMessenger telegramMessenger;
+    private final LanguageStore languageStore;
 
     PendingDrawService(
             PendingDrawStore store,
             ExchangeService exchangeService,
             OrganizerService organizerService,
             TelegramMessenger telegramMessenger) {
+        this(store, exchangeService, organizerService, telegramMessenger, null);
+    }
+
+    PendingDrawService(
+            PendingDrawStore store,
+            ExchangeService exchangeService,
+            OrganizerService organizerService,
+            TelegramMessenger telegramMessenger,
+            LanguageStore languageStore) {
         this.store = Objects.requireNonNull(store);
         this.exchangeService = Objects.requireNonNull(exchangeService);
         this.organizerService = Objects.requireNonNull(organizerService);
         this.telegramMessenger = Objects.requireNonNull(telegramMessenger);
+        this.languageStore = languageStore;
         migrateLegacyDraw();
     }
 
@@ -129,11 +140,14 @@ final class PendingDrawService {
             }
 
             try {
+                BotLanguage language = languageStore == null ? BotLanguage.UKRAINIAN
+                        : languageStore.get(assignment.giverId()).orElse(BotLanguage.UKRAINIAN);
                 telegramMessenger.sendMessage(
                         assignment.giverId(),
                         assignmentMessage(
-                                participantNames.get(assignment.receiverId()), replacement),
-                        BotButtons.assignmentReceived(state.drawGeneration()));
+                                language, participantNames.get(assignment.receiverId()), replacement),
+                        BotButtons.localize(language,
+                                BotButtons.assignmentReceived(state.drawGeneration())));
             } catch (TelegramApiException exception) {
                 failedDeliveries++;
                 LOGGER.log(
@@ -166,7 +180,17 @@ final class PendingDrawService {
         }
     }
 
-    private static String assignmentMessage(String receiverName, boolean replacement) {
+    private static String assignmentMessage(
+            BotLanguage language, String receiverName, boolean replacement) {
+        if (language == BotLanguage.ENGLISH) {
+            return (replacement
+                            ? "🔄 **The draw has been updated!** 🎅\n\n"
+                                    + "This replaces your previous assignment.\n\n"
+                            : "🎁 **The Secret Santa draw is complete!** 🎅\n\n")
+                    + "Your assignment is to buy a gift for: **"
+                    + escapeMarkdown(receiverName)
+                    + "** 🎉\n\nKeep it a surprise! 🤫";
+        }
         return (replacement
                         ? "🔄 **Жеребкування оновлено!** 🎅\n\n"
                         : "🎁 **Жеребкування Таємного Санти завершено!** 🎅\n\n")

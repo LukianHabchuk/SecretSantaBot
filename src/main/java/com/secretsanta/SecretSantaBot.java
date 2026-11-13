@@ -87,7 +87,8 @@ public class SecretSantaBot extends TelegramLongPollingBot {
         ExchangeService exchangeService =
                 new ExchangeService(organizerService, pendingDrawStore.exchangeStore());
         PendingDrawService pendingDrawService =
-                new PendingDrawService(pendingDrawStore, exchangeService, organizerService, messenger);
+                new PendingDrawService(
+                        pendingDrawStore, exchangeService, organizerService, messenger, languageStore);
         this.responder = new BotResponder(messenger, languageStore);
         this.commandMenu = new BotCommandMenu(organizerService, messenger);
         this.buttonController = new BotButtonController(
