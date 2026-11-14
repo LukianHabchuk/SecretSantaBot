@@ -105,6 +105,8 @@ final class EnglishMessages {
         m.put(BotMessages.PAIR_REQUEST_FAILED, "❌ Could not save the pair request.");
         m.put(BotMessages.PAIR_REQUEST_ACCEPTED_CALLBACK, "Pair confirmed.");
         m.put(BotMessages.PAIR_REQUEST_ACCEPTED, "✅ Pair confirmed: ");
+        m.put(BotMessages.PAIR_EXPLANATION,
+                "This pair only means neither of you will be assigned to the other in the draw.");
         m.put(BotMessages.PAIR_REQUEST_DECLINED_CALLBACK, "Request declined.");
         m.put(BotMessages.PAIR_REQUEST_DECLINED, "Pair request declined.");
         m.put(BotMessages.PAIR_REQUEST_CANCELED_CALLBACK, "Request canceled.");

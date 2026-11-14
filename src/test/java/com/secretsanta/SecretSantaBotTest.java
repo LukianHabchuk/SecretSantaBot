@@ -103,6 +103,24 @@ class SecretSantaBotTest {
         assertTrue(messenger.sentMessages.stream().anyMatch(message ->
                 message.chatId() == 202L
                         && message.text().contains("Твій запит")));
+
+        String accept = callbackDataFor(
+                messenger.sentMessages.stream()
+                        .filter(message -> message.chatId() == 201L)
+                        .reduce((first, second) -> second)
+                        .orElseThrow()
+                        .keyboard(),
+                "Accept pair");
+        bot.onUpdateReceived(callbackUpdate(accept, 201L, 201L, "accept"));
+
+        assertTrue(messenger.sentMessages.stream().anyMatch(message ->
+                message.chatId() == 201L
+                        && message.text().contains(
+                                "This pair only means neither of you will be assigned to the other in the draw.")));
+        assertTrue(messenger.sentMessages.stream().anyMatch(message ->
+                message.chatId() == 202L
+                        && message.text().contains(
+                                "Ця пара лише означає, що ви не отримаєте одне одного в розіграші.")));
     }
 
     @Test
@@ -1012,7 +1030,9 @@ class SecretSantaBotTest {
         assertTrue(acceptedExchangeService.state().pairRequests().isEmpty());
         assertTrue(messenger.sentMessages.stream()
                 .filter(message -> message.chatId() == 201L || message.chatId() == 202L)
-                .anyMatch(message -> message.text().contains("Пару підтверджено")));
+                .anyMatch(message -> message.text().contains("Пару підтверджено")
+                        && message.text().contains(
+                                "Ця пара лише означає, що ви не отримаєте одне одного в розіграші.")));
         assertTrue(cancel.startsWith("pair-request:cancel:"));
 
         bot.onUpdateReceived(update(201L, 201L, "private", "/start"));
@@ -1022,6 +1042,8 @@ class SecretSantaBotTest {
                 201L,
                 "status"));
         assertTrue(messenger.sentMessages.getLast().text().contains("Твоя пара"));
+        assertTrue(messenger.sentMessages.getLast().text().contains(
+                "Ця пара лише означає, що ви не отримаєте одне одного в розіграші."));
     }
 
     @Test
@@ -1174,6 +1196,12 @@ class SecretSantaBotTest {
         assertTrue(notifications.stream().allMatch(message ->
                 !message.text().contains("Твоя ціль")
                         && !message.text().contains("купити подарунок")));
+        for (long userId : List.of(201L, 203L)) {
+            assertTrue(notifications.stream().anyMatch(message ->
+                    message.chatId() == userId
+                            && message.text().contains(
+                                    "Ця пара лише означає, що ви не отримаєте одне одного в розіграші.")));
+        }
     }
 
     @Test

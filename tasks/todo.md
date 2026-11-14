@@ -401,6 +401,36 @@ name before the draw.
 
 **Estimated scope:** Small
 
+## Task 19: Clarifying participant pair notifications
+
+**Status:** Complete.
+
+**Description:** Explain in pair confirmations, organizer change notices, and
+pair status messages that pairing only prevents participants from being
+assigned to each other in the draw.
+
+**Acceptance criteria:**
+- [x] English and Ukrainian participant messages clarify that a pair excludes
+  each participant from drawing the other and does not assign them to each
+  other.
+- [x] The README and product specification describe the same pair semantics.
+
+**Verification:**
+- [x] `SecretSantaBotTest` covers accepted pairs, organizer changes, pair
+  status, and both languages.
+- [x] Java 27 Docker build passes.
+
+**Dependencies:** Task 11
+
+**Files likely touched:**
+- `src/main/java/com/secretsanta/BotMessages.java`
+- `src/main/java/com/secretsanta/EnglishMessages.java`
+- `src/test/java/com/secretsanta/SecretSantaBotTest.java`
+- `README.md`
+- `docs/SPEC-secret-santa-telegram-bot.md`
+
+**Estimated scope:** Small
+
 ## Checkpoint: Name Editing
 - [x] Domain and private UI tests pass.
 - [x] Name edits preserve participant identities/pairings and are blocked after

@@ -112,6 +112,8 @@ final class BotMessages {
     static final String PAIR_REQUEST_FAILED = "❌ Не вдалося зберегти запит на пару.";
     static final String PAIR_REQUEST_ACCEPTED_CALLBACK = "Пару підтверджено.";
     static final String PAIR_REQUEST_ACCEPTED = "✅ Пару підтверджено: ";
+    static final String PAIR_EXPLANATION =
+            "Ця пара лише означає, що ви не отримаєте одне одного в розіграші.";
     static final String PAIR_REQUEST_DECLINED_CALLBACK = "Запит відхилено.";
     static final String PAIR_REQUEST_DECLINED = "Запит на пару відхилено.";
     static final String PAIR_REQUEST_CANCELED_CALLBACK = "Запит скасовано.";
@@ -376,35 +378,44 @@ final class BotMessages {
     }
 
     static String pairAccepted(String escapedPartnerName) {
-        return PAIR_REQUEST_ACCEPTED + "**" + escapedPartnerName + "**.";
+        return pairAccepted(BotLanguage.UKRAINIAN, escapedPartnerName);
     }
 
     static String pairAccepted(BotLanguage language, String escapedPartnerName) {
-        return language == BotLanguage.ENGLISH
+        String confirmation = language == BotLanguage.ENGLISH
                 ? "✅ Pair confirmed: **" + escapedPartnerName + "**."
-                : pairAccepted(escapedPartnerName);
+                : PAIR_REQUEST_ACCEPTED + "**" + escapedPartnerName + "**.";
+        return confirmation + "\n" + pairExplanation(language);
     }
 
     static String pairStatusPaired(String escapedPartnerName) {
-        return "Твоя пара: **" + escapedPartnerName + "**.";
+        return pairStatusPaired(BotLanguage.UKRAINIAN, escapedPartnerName);
     }
 
     static String pairStatusPaired(BotLanguage language, String escapedPartnerName) {
-        return language == BotLanguage.ENGLISH
+        String status = language == BotLanguage.ENGLISH
                 ? "Your partner: **" + escapedPartnerName + "**."
-                : pairStatusPaired(escapedPartnerName);
+                : "Твоя пара: **" + escapedPartnerName + "**.";
+        return status + "\n" + pairExplanation(language);
     }
 
     static String pairChanged(String escapedPartnerName) {
-        return "Організатор змінив пари. Твоя поточна пара: **"
-                + escapedPartnerName + "**.";
+        return pairChanged(BotLanguage.UKRAINIAN, escapedPartnerName);
     }
 
     static String pairChanged(BotLanguage language, String escapedPartnerName) {
-        return language == BotLanguage.ENGLISH
+        String change = language == BotLanguage.ENGLISH
                 ? "The organizer changed the pairs. Your current partner: **"
                         + escapedPartnerName + "**."
-                : pairChanged(escapedPartnerName);
+                : "Організатор змінив пари. Твоя поточна пара: **"
+                        + escapedPartnerName + "**.";
+        return change + "\n" + pairExplanation(language);
+    }
+
+    private static String pairExplanation(BotLanguage language) {
+        return language == BotLanguage.ENGLISH
+                ? EnglishMessages.translate(PAIR_EXPLANATION)
+                : PAIR_EXPLANATION;
     }
 
     static String participantRoster(

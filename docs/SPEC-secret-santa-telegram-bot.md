@@ -176,7 +176,10 @@ delivery payloads. Do not place credentials or keys in source files or docs.
 7. Participant pairing is private and consent-based. Only unpaired participants
    with no pending request can send a request. The recipient can accept or
    decline; the requester can cancel. Acceptance creates a reciprocal
-   exclusion. Participants cannot change an accepted pair themselves.
+   exclusion. Participant-facing pair confirmations, change notices, and status
+   messages explain that the pair only prevents the participants from being
+   assigned to each other; it does not assign them to each other. Participants
+   cannot change an accepted pair themselves.
 8. The organizer can privately review the roster, pair status, and pending
    requests, and can directly pair or replace pairs. Organizer changes must
    preserve the one-partner-per-participant constraint and notify affected

@@ -138,6 +138,10 @@ Task 8 -> Task 16; Tasks 9 and 16 -> Task 17 -> Task 18.
   reject invalid or post-draw edits, and report persistence failures.
 - The README describes both name-edit paths and their pre-draw availability.
 
+### Phase 6: Pair Meaning
+- Task 19: Explain to participants that a pair only excludes them from drawing
+  each other.
+
 ### Checkpoint: Complete
 - All approved specification criteria have tests or a documented manual check.
 - `mvn clean test` and `mvn clean package` pass on Java 27.

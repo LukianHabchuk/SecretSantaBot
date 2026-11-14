@@ -378,6 +378,7 @@ During registration, participants can use **Request a partner** to privately ask
 another unpaired participant to pair. The recipient can accept or decline, and
 the requester can cancel; an unresolved request blocks registration closure and
 the draw. The **My pair request** button shows the current request or confirmed pair.
+A pair only means neither participant will be assigned to the other in the draw.
 The organizer can review the roster and pending requests with **Participants**, or
 use **Manage pairs** (also available through `/pair`) to create or replace
 pairs. Re-pairing either person removes their previous pair, leaves former
