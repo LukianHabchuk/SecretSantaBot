@@ -79,6 +79,8 @@ Completed Java/Maven, assignment, organizer, and delivery foundations (Tasks 1-6
   -> 13 receipt confirmation and deletion
   -> 14 complete replacement draws and generation-safe callbacks
   -> 15 simulator, operating docs, and test-bot walkthrough
+  -> 16 persisted participant display-name updates
+  -> 17 private participant and organizer name-edit controls
 ```
 
 ## Task List
@@ -121,6 +123,17 @@ Completed Java/Maven, assignment, organizer, and delivery foundations (Tasks 1-6
 - Task 15: Update the offline simulator and operating documentation, then
   verify the full flow with a separate Telegram test bot.
 
+### Phase 5: Pre-draw Name Editing
+- Task 16: Add an authorized, persisted display-name update to the exchange
+  service.
+- Task 17: Add private name-edit controls for participants and the organizer.
+
+### Checkpoint: Name Editing
+- Participants can privately edit their own names and the organizer can edit
+  any participant's name while registration is open.
+- Name edits persist across restart, preserve participant identity and pairs,
+  reject invalid or post-draw edits, and report persistence failures.
+
 ### Checkpoint: Complete
 - All approved specification criteria have tests or a documented manual check.
 - `mvn clean test` and `mvn clean package` pass on Java 27.
@@ -140,6 +153,7 @@ Completed Java/Maven, assignment, organizer, and delivery foundations (Tasks 1-6
 | UI or logs leak the assignment map | High | Keep mapping out of organizer-facing status and log fields; test captured messages/log output using fake transport. |
 | Existing uncommitted simulator work conflicts with changes | Medium | Leave it untouched until Task 15, inspect and integrate its changes, and never discard it as cleanup. |
 | Telegram test-bot credentials are unavailable | Medium | Keep all domain and simulator checks offline; perform live transport verification only with a separate test bot configured locally. |
+| Organizer roster contains duplicate display names | Low | Keep participant IDs as callback targets and disambiguate duplicate labels in the selection keyboard. |
 
 ## Open Questions
 - No product-flow questions remain; assignment is blocked until every open pair
@@ -148,6 +162,8 @@ Completed Java/Maven, assignment, organizer, and delivery foundations (Tasks 1-6
   production credentials for verification.
 - Production hosting and dependency-audit method remain launch decisions and are
   outside this implementation plan.
+- Name editing is restricted to the pre-draw registration phase; no new
+  dependencies or profile fields are required.
 
 ## Verification Commands
 Run from the directory containing `pom.xml`, using JDK 27:

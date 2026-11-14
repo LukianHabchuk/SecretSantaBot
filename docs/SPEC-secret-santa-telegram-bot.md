@@ -9,7 +9,9 @@ meet this specification.
 Build a button-driven Telegram bot for one friend group's Secret Santa exchange.
 The organizer and participants use private chats with the bot. Friends enter an
 exchange invitation code, register using their Telegram first name (with an
-option to edit it), and can propose partner pairs that require mutual acceptance.
+option to edit it), and can later update their registered display name before
+the draw. The organizer can also update any participant's display name before
+the draw. Participants can propose partner pairs that require mutual acceptance.
 The organizer can review and override pairings, start or rerun a complete draw,
 and eventually delete the exchange after all participants confirm.
 
@@ -25,6 +27,9 @@ roster, pair exclusions, and their own assignment, especially in a small group.
   participant, and privately share its invitation code.
 - As a friend, I can start the bot, enter the invite code, confirm or edit the
   Telegram first name used for the exchange, and join the active roster.
+- As a participant, I can privately edit my registered display name before the
+  draw; the organizer can privately edit any participant's display name before
+  the draw.
 - As a participant, I can propose a partner and accept or decline a proposal
   addressed to me.
 - As the organizer, I can inspect roster and pair/request status and directly
@@ -54,6 +59,10 @@ arbitrary non-partner exclusions are out of scope.
   Requests must first be accepted, declined, or canceled by the requester.
 - The invitation remains valid until assignment starts. Starting assignment
   closes registration.
+- Before assignment starts, participants may edit their own display names and
+  the organizer may edit any participant's display name. Name edits use the
+  existing signup validation and do not change participant identity or pairing
+  state.
 - The organizer can reset an exchange before assignment only, and must confirm
   the reset. Reset is unavailable while delivery is pending.
 - A new full draw is permitted only after the previous draw was fully delivered
@@ -215,6 +224,13 @@ delivery payloads. Do not place credentials or keys in source files or docs.
     makes pending or retained assignments unrecoverable. Telegram and the host
     can access messages the bot processes; bot chats are not end-to-end
     encrypted.
+18. Before assignment starts, participants can privately edit their own
+    registered display name, and the organizer can privately edit any
+    participant's display name. Use the existing signup validation, preserve
+    Telegram identities and pair relationships, and persist the change
+    atomically. Report success only after persistence succeeds; reject edits
+    after assignment starts. The organizer must be able to target the intended
+    participant even when display names are identical.
 
 ## Localization: English and Ukrainian
 
@@ -271,6 +287,10 @@ delivery payloads. Do not place credentials or keys in source files or docs.
   unpaired-only rules, organizer overrides, notifications, and restart recovery.
 - Test complete assignment constraints, impossible configurations, no partial
   delivery, and inclusion of the organizer as a participant.
+- Test participant self-edits and organizer edits of other participants,
+  including persistence across restart, invalid names, duplicate display names,
+  rejection after assignment starts, and storage failures. Verify edits do not
+  change participant identities or pair relationships.
 - Test that each fake private recipient receives only their own assignment and
   the organizer-facing UI/log output contains no other assignment mappings.
 - Test encrypted persistence/tamper rejection, replacement-draw generations,
@@ -305,6 +325,9 @@ delivery payloads. Do not place credentials or keys in source files or docs.
 - The organizer is automatically included and receives one assignment.
 - Participants enter the correct exchange, confirm/edit their names, and create
   partner exclusions only by mutual acceptance.
+- Participants and the organizer can update display names before assignment;
+  edits persist without changing membership or pairings, and are unavailable
+  after assignment starts.
 - Assignment cannot start while any participant pair request remains unresolved.
 - The organizer can review and override pairs without seeing assignment
   mappings.

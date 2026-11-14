@@ -20,6 +20,11 @@ final class ExchangeService {
         INVALID_NAME
     }
 
+    enum NameUpdateResult {
+        UPDATED,
+        INVALID_NAME
+    }
+
     enum InviteStatus {
         VALID,
         INVALID,
@@ -140,6 +145,55 @@ final class ExchangeService {
                 state.deliveredUserIds(),
                 state.confirmedUserIds()));
         return RegistrationResult.REGISTERED;
+    }
+
+    synchronized NameUpdateResult updateParticipantName(
+            long actorId, long participantId, String name) throws IOException {
+        if (actorId <= 0 || participantId <= 0) {
+            throw new IllegalArgumentException("Telegram user IDs must be positive.");
+        }
+        if (actorId != participantId && !organizerService.isOrganizer(actorId)) {
+            throw new SecurityException("Only a participant or the organizer can edit a name.");
+        }
+        if (state.phase() != ExchangeState.Phase.REGISTRATION_OPEN) {
+            throw new IllegalStateException("Names can only be edited before the draw.");
+        }
+
+        String displayName = validDisplayName(name);
+        if (displayName == null) {
+            return NameUpdateResult.INVALID_NAME;
+        }
+
+        List<ExchangeState.Participant> participants = new ArrayList<>(state.participants());
+        int participantIndex = -1;
+        for (int index = 0; index < participants.size(); index++) {
+            if (participants.get(index).userId() == participantId) {
+                participantIndex = index;
+                break;
+            }
+        }
+        if (participantIndex < 0) {
+            throw new IllegalArgumentException("Participant is not registered.");
+        }
+
+        ExchangeState.Participant current = participants.get(participantIndex);
+        if (current.name().equals(displayName)) {
+            return NameUpdateResult.UPDATED;
+        }
+        participants.set(
+                participantIndex,
+                new ExchangeState.Participant(
+                        current.userId(), displayName, current.partnerId()));
+        persist(new ExchangeState(
+                state.phase(),
+                state.inviteCode(),
+                participants,
+                state.pairRequests(),
+                state.drawGeneration(),
+                state.assignments(),
+                state.deliveredUserIds(),
+                state.confirmedUserIds()));
+        return NameUpdateResult.UPDATED;
     }
 
     synchronized InviteStatus inviteStatus(String inviteCode) {

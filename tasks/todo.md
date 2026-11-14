@@ -313,3 +313,72 @@ separate Telegram test bot.
 - [x] Test-bot walkthrough is complete or the credential/availability blocker
   is explicitly documented.
 - [ ] Human approves the implementation handoff.
+
+## Task 16: Persisting authorized participant name edits
+
+**Status:** Complete.
+
+**Description:** Add a domain operation for a participant to edit their own
+display name or the organizer to edit any participant's name while registration
+is open. Reuse signup validation and atomically persist the changed participant
+record without changing identity or pair state.
+
+**Acceptance criteria:**
+- [x] Participant can edit only their own name; the organizer can edit any
+  registered participant's name.
+- [x] Names use signup validation, are stored normalized, and cannot be changed
+  after assignment starts.
+- [x] Successful edits survive restart; failed writes leave in-memory and
+  persisted state unchanged.
+
+**Verification:**
+- [x] `ExchangeServiceTest` covers permissions, invalid/closed edits,
+  persistence, pair preservation, and failed writes.
+- [x] `ExchangeServiceTest` passes in the Java 27 Docker build.
+
+**Dependencies:** Task 8
+
+**Files likely touched:**
+- `src/main/java/com/secretsanta/ExchangeService.java`
+- `src/test/java/com/secretsanta/ExchangeServiceTest.java`
+
+**Estimated scope:** Small
+
+## Task 17: Adding private name-edit controls
+
+**Status:** In progress.
+
+**Description:** Add a private edit-name action for registered participants and
+an organizer flow to select and rename any roster participant. Use the existing
+pending-input and localized button patterns; disambiguate duplicate display
+names and reject stale callbacks.
+
+**Acceptance criteria:**
+- [ ] A registered participant can edit their own name in private chat before
+  the draw; the organizer can select and edit any participant.
+- [ ] Organizer target selection remains unambiguous when names are duplicated,
+  and callback actions are re-authorized and bound to the current selection.
+- [ ] Invalid names, closed registration, and persistence failures are reported
+  explicitly without claiming success.
+
+**Verification:**
+- [ ] Focused `SecretSantaBotTest` covers participant edits, organizer edits
+  (including duplicate names), private-only behavior, and post-draw rejection.
+- [ ] `mvn -Dtest=SecretSantaBotTest,EnglishMessagesTest test` passes on Java 27.
+
+**Dependencies:** Tasks 9 and 16
+
+**Files likely touched:**
+- `src/main/java/com/secretsanta/BotButtonController.java`
+- `src/main/java/com/secretsanta/BotButtons.java`
+- `src/main/java/com/secretsanta/BotMessages.java`
+- `src/main/java/com/secretsanta/EnglishMessages.java`
+- `src/test/java/com/secretsanta/SecretSantaBotTest.java`
+
+**Estimated scope:** Medium
+
+## Checkpoint: Name Editing
+- [ ] Domain and private UI tests pass.
+- [ ] Name edits preserve participant identities/pairings and are blocked after
+  draw start.
+- [ ] Full Maven test suite passes.
