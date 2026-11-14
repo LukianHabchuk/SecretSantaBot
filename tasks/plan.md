@@ -1,8 +1,9 @@
 # Implementation Plan: Private Secret Santa Exchange
 
 ## Status
-Approved implementation plan for the revised specification. Tasks 10 and 11 are
-complete; Task 12 is next in the ordered implementation sequence.
+Approved implementation plan for the revised specification and pre-draw name
+editing. Tasks 16-18 are complete; the separate live test-bot walkthrough
+remains pending test-bot access.
 
 ## Overview
 Extend the existing Java 27 Telegram bot from transient registration and
@@ -81,6 +82,9 @@ Completed Java/Maven, assignment, organizer, and delivery foundations (Tasks 1-6
   -> 15 simulator, operating docs, and test-bot walkthrough
 ```
 
+The name-edit branch depends on existing onboarding and persistence:
+Task 8 -> Task 16; Tasks 9 and 16 -> Task 17 -> Task 18.
+
 ## Task List
 
 ### Phase 1: Durable Exchange and Onboarding
@@ -121,6 +125,23 @@ Completed Java/Maven, assignment, organizer, and delivery foundations (Tasks 1-6
 - Task 15: Update the offline simulator and operating documentation, then
   verify the full flow with a separate Telegram test bot.
 
+### Phase 5: Pre-draw Name Editing
+- Task 16: Add an authorized, persisted display-name update to the exchange
+  service.
+- Task 17: Add private name-edit controls for participants and the organizer.
+- Task 18: Document participant and organizer name-edit actions in the README.
+
+### Checkpoint: Name Editing
+- Participants can privately edit their own names and the organizer can edit
+  any participant's name while registration is open.
+- Name edits persist across restart, preserve participant identity and pairs,
+  reject invalid or post-draw edits, and report persistence failures.
+- The README describes both name-edit paths and their pre-draw availability.
+
+### Phase 6: Pair Meaning
+- Task 19: Explain to participants that a pair only excludes them from drawing
+  each other.
+
 ### Checkpoint: Complete
 - All approved specification criteria have tests or a documented manual check.
 - `mvn clean test` and `mvn clean package` pass on Java 27.
@@ -140,6 +161,7 @@ Completed Java/Maven, assignment, organizer, and delivery foundations (Tasks 1-6
 | UI or logs leak the assignment map | High | Keep mapping out of organizer-facing status and log fields; test captured messages/log output using fake transport. |
 | Existing uncommitted simulator work conflicts with changes | Medium | Leave it untouched until Task 15, inspect and integrate its changes, and never discard it as cleanup. |
 | Telegram test-bot credentials are unavailable | Medium | Keep all domain and simulator checks offline; perform live transport verification only with a separate test bot configured locally. |
+| Organizer roster contains duplicate display names | Low | Keep participant IDs as callback targets and disambiguate duplicate labels in the selection keyboard. |
 
 ## Open Questions
 - No product-flow questions remain; assignment is blocked until every open pair
@@ -148,6 +170,8 @@ Completed Java/Maven, assignment, organizer, and delivery foundations (Tasks 1-6
   production credentials for verification.
 - Production hosting and dependency-audit method remain launch decisions and are
   outside this implementation plan.
+- Name editing is restricted to the pre-draw registration phase; no new
+  dependencies or profile fields are required.
 
 ## Verification Commands
 Run from the directory containing `pom.xml`, using JDK 27:

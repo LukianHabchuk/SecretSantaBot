@@ -281,7 +281,9 @@ To walk through an exchange:
    enter the local demo setup code shown by `help`, and press **Open registration**.
 2. Copy the invite code from the local output. For at least three participants
    besides the organizer, send `/start`, choose **English**, press **Join with a
-   code**, enter the invite code, and confirm or edit the name.
+   code**, enter the invite code, and confirm or edit the name. Before the draw,
+   participants can choose **Edit my name**, and the organizer can choose
+   **Edit participant names** to update any roster entry.
 3. During registration, a participant can send `/start`, press **Request a
    partner**, and select another participant. The recipient accepts or declines
    from their own simulated chat. An organizer can also manage pairs from
@@ -308,8 +310,11 @@ exchange:
 
 1. Claim organizer access, open registration, and share the invite code.
 2. Join several test accounts, edit a participant name, and exercise a pair
-   request and recipient acceptance or decline. Each successful join sends the
-   organizer a private notification with the participant's chosen name.
+   request and recipient acceptance or decline. After joining, verify that a
+   participant can use **Edit my name** and the organizer can use **Edit
+   participant names** to change the intended roster entry, including when two
+   participants share a name. Each successful join sends the organizer a
+   private notification with the participant's chosen name.
 3. Check that the organizer's participant list shows pair/request status but
    never assignment recipients. Close registration and run the draw; verify
    each assignment is delivered privately.
@@ -365,10 +370,15 @@ organizer commands in the organizer's private chat. Not every inline button
 has a slash-command equivalent. Before organizer setup, `/claim` is also listed.
 If updating the menu fails, the bot logs a
 warning and retries on `/start`; the normal buttons remain available.
+Before the draw starts, registered participants can select **Edit my name** to
+update their own display name. The organizer can select **Edit participant
+names** and choose any registered participant. Name edits are unavailable after
+the draw starts.
 During registration, participants can use **Request a partner** to privately ask
 another unpaired participant to pair. The recipient can accept or decline, and
 the requester can cancel; an unresolved request blocks registration closure and
 the draw. The **My pair request** button shows the current request or confirmed pair.
+A pair only means neither participant will be assigned to the other in the draw.
 The organizer can review the roster and pending requests with **Participants**, or
 use **Manage pairs** (also available through `/pair`) to create or replace
 pairs. Re-pairing either person removes their previous pair, leaves former

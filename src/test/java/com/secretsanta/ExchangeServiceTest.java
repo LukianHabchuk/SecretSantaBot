@@ -189,6 +189,81 @@ class ExchangeServiceTest {
     }
 
     @Test
+    void participantAndOrganizerCanUpdateNamesWithoutChangingPairings() throws Exception {
+        OrganizerService organizerService = createOrganizerService();
+        ExchangeService exchange = createExchangeWithParticipants(organizerService);
+        exchange.pair(201L, 202L);
+
+        assertEquals(
+                ExchangeService.NameUpdateResult.UPDATED,
+                exchange.updateParticipantName(201L, 201L, "  Alex Updated  "));
+        assertEquals(
+                ExchangeService.NameUpdateResult.UPDATED,
+                exchange.updateParticipantName(100L, 202L, "Sam Updated"));
+
+        assertEquals("Alex Updated", exchange.participant(201L).orElseThrow().name());
+        assertEquals("Sam Updated", exchange.participant(202L).orElseThrow().name());
+        assertEquals(202L, exchange.participant(201L).orElseThrow().partnerId());
+        assertEquals(201L, exchange.participant(202L).orElseThrow().partnerId());
+
+        ExchangeService restartedExchange = new ExchangeService(
+                organizerService, new ExchangeStore(dataDirectory, TEST_DATA_KEY));
+
+        assertEquals("Alex Updated", restartedExchange.participant(201L).orElseThrow().name());
+        assertEquals("Sam Updated", restartedExchange.participant(202L).orElseThrow().name());
+        assertEquals(202L, restartedExchange.participant(201L).orElseThrow().partnerId());
+    }
+
+    @Test
+    void participantCannotUpdateAnotherParticipantsName() throws Exception {
+        ExchangeService exchange = createExchangeWithParticipants(createOrganizerService());
+
+        assertThrows(
+                SecurityException.class,
+                () -> exchange.updateParticipantName(203L, 201L, "Changed"));
+        assertEquals("Guest 201", exchange.participant(201L).orElseThrow().name());
+    }
+
+    @Test
+    void nameUpdatesRejectInvalidNamesAndClosedRegistration() throws Exception {
+        ExchangeService exchange = createExchangeWithParticipants(createOrganizerService());
+
+        assertEquals(
+                ExchangeService.NameUpdateResult.INVALID_NAME,
+                exchange.updateParticipantName(201L, 201L, "  "));
+        assertEquals("Guest 201", exchange.participant(201L).orElseThrow().name());
+
+        exchange.closeRegistration();
+        assertThrows(
+                IllegalStateException.class,
+                () -> exchange.updateParticipantName(201L, 201L, "Changed"));
+        assertEquals("Guest 201", exchange.participant(201L).orElseThrow().name());
+    }
+
+    @Test
+    void failedNameUpdateWriteDoesNotChangeTheRoster() throws Exception {
+        OrganizerService organizerService = createOrganizerService();
+        ExchangeStore workingStore = new ExchangeStore(dataDirectory, TEST_DATA_KEY);
+        ExchangeService exchange = new ExchangeService(organizerService, workingStore);
+        String inviteCode = exchange.openRegistration(100L);
+        exchange.register(201L, inviteCode, "Alex");
+        ExchangeStore failingStore = new ExchangeStore(
+                dataDirectory,
+                TEST_DATA_KEY,
+                (source, target) -> {
+                    throw new IOException("Simulated atomic write failure.");
+                });
+        ExchangeService failingExchange = new ExchangeService(organizerService, failingStore);
+
+        assertThrows(
+                IOException.class,
+                () -> failingExchange.updateParticipantName(201L, 201L, "Alex Updated"));
+
+        assertEquals("Alex", failingExchange.participant(201L).orElseThrow().name());
+        assertEquals("Alex", workingStore.load().orElseThrow().participants().get(1).name());
+    }
+
+    @Test
     void pairingIsMutualAndReplacesBothPreviousPairs() throws Exception {
         OrganizerService organizerService = createOrganizerService();
         ExchangeService exchange = createExchangeWithParticipants(organizerService);

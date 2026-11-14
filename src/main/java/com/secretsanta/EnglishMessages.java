@@ -26,6 +26,22 @@ final class EnglishMessages {
         m.put(BotMessages.INVITE_INVALID, "❌ Invalid invitation code. Please try again.");
         m.put(BotMessages.JOIN_NAME_INVALID, "❌ Enter a name between 1 and 64 characters.");
         m.put(BotMessages.JOIN_NAME_PROMPT, "Enter the name that participants will see.");
+        m.put(BotMessages.NAME_EDIT_PROMPT, "Enter the new name that participants will see.");
+        m.put(BotMessages.NAME_EDIT_PROMPT_CALLBACK, "Enter the name in this private chat.");
+        m.put(BotMessages.NAME_EDIT_INVALID,
+                "❌ The name must contain 1 to 64 characters and no control characters.");
+        m.put(BotMessages.NAME_EDIT_SAVED, "✅ Name updated.");
+        m.put(BotMessages.NAME_EDIT_CLOSED_CALLBACK,
+                "Names can only be changed before the draw starts.");
+        m.put(BotMessages.NAME_EDIT_CLOSED,
+                "❌ A name can only be changed before the draw starts.");
+        m.put(BotMessages.NAME_EDIT_UNAVAILABLE,
+                "❌ Could not change the name. Check that the participant is registered.");
+        m.put(BotMessages.NAME_EDIT_FAILED,
+                "❌ Could not save the name. Please try again.");
+        m.put(BotMessages.NAME_EDIT_TARGETS_PROMPT,
+                "Choose the participant whose name you want to change:");
+        m.put(BotMessages.NAME_EDIT_TARGETS_CALLBACK, "Choose a participant.");
         m.put(BotMessages.JOIN_INVITE_PROMPT, "Enter the exchange invitation code.");
         m.put(BotMessages.SETUP_CODE_PROMPT, "Enter the setup code to confirm organizer access.");
         m.put(BotMessages.PRIVATE_INPUT_CALLBACK, "Enter the code in this private chat.");
@@ -89,6 +105,8 @@ final class EnglishMessages {
         m.put(BotMessages.PAIR_REQUEST_FAILED, "❌ Could not save the pair request.");
         m.put(BotMessages.PAIR_REQUEST_ACCEPTED_CALLBACK, "Pair confirmed.");
         m.put(BotMessages.PAIR_REQUEST_ACCEPTED, "✅ Pair confirmed: ");
+        m.put(BotMessages.PAIR_EXPLANATION,
+                "This pair only means neither of you will be assigned to the other in the draw.");
         m.put(BotMessages.PAIR_REQUEST_DECLINED_CALLBACK, "Request declined.");
         m.put(BotMessages.PAIR_REQUEST_DECLINED, "Pair request declined.");
         m.put(BotMessages.PAIR_REQUEST_CANCELED_CALLBACK, "Request canceled.");

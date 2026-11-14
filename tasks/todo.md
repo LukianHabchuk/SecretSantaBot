@@ -313,3 +313,127 @@ separate Telegram test bot.
 - [x] Test-bot walkthrough is complete or the credential/availability blocker
   is explicitly documented.
 - [ ] Human approves the implementation handoff.
+
+## Task 16: Persisting authorized participant name edits
+
+**Status:** Complete.
+
+**Description:** Add a domain operation for a participant to edit their own
+display name or the organizer to edit any participant's name while registration
+is open. Reuse signup validation and atomically persist the changed participant
+record without changing identity or pair state.
+
+**Acceptance criteria:**
+- [x] Participant can edit only their own name; the organizer can edit any
+  registered participant's name.
+- [x] Names use signup validation, are stored normalized, and cannot be changed
+  after assignment starts.
+- [x] Successful edits survive restart; failed writes leave in-memory and
+  persisted state unchanged.
+
+**Verification:**
+- [x] `ExchangeServiceTest` covers permissions, invalid/closed edits,
+  persistence, pair preservation, and failed writes.
+- [x] `ExchangeServiceTest` passes in the Java 27 Docker build.
+
+**Dependencies:** Task 8
+
+**Files likely touched:**
+- `src/main/java/com/secretsanta/ExchangeService.java`
+- `src/test/java/com/secretsanta/ExchangeServiceTest.java`
+
+**Estimated scope:** Small
+
+## Task 17: Adding private name-edit controls
+
+**Status:** Complete.
+
+**Description:** Add a private edit-name action for registered participants and
+an organizer flow to select and rename any roster participant. Use the existing
+pending-input and localized button patterns; disambiguate duplicate display
+names and reject stale callbacks.
+
+**Acceptance criteria:**
+- [x] A registered participant can edit their own name in private chat before
+  the draw; the organizer can select and edit any participant.
+- [x] Organizer target selection remains unambiguous when names are duplicated,
+  and callback actions are re-authorized and bound to the current selection.
+- [x] Invalid names, closed registration, and persistence failures are reported
+  explicitly without claiming success.
+
+**Verification:**
+- [x] `SecretSantaBotTest` covers participant edits, organizer edits
+  (including duplicate names), private-only behavior, and post-draw rejection.
+- [x] Java 27 Docker build passes, including `SecretSantaBotTest` and
+  `EnglishMessagesTest`.
+
+**Dependencies:** Tasks 9 and 16
+
+**Files likely touched:**
+- `src/main/java/com/secretsanta/BotButtonController.java`
+- `src/main/java/com/secretsanta/BotButtons.java`
+- `src/main/java/com/secretsanta/BotMessages.java`
+- `src/main/java/com/secretsanta/EnglishMessages.java`
+- `src/main/java/com/secretsanta/BotLogMessages.java`
+- `src/test/java/com/secretsanta/SecretSantaBotTest.java`
+
+**Estimated scope:** Medium (six files including focused tests)
+
+## Task 18: Documenting pre-draw name edits
+
+**Status:** Complete.
+
+**Description:** Update the operator walkthrough to explain that participants
+can edit their own registered names and the organizer can edit any participant's
+name before the draw.
+
+**Acceptance criteria:**
+- [x] README explains where participants and organizers access name editing.
+- [x] README states that edits are unavailable after the draw starts.
+
+**Verification:**
+- [x] Reviewed the README flow against the localized button labels.
+
+**Dependencies:** Task 17
+
+**Files likely touched:**
+- `README.md`
+
+**Estimated scope:** Small
+
+## Task 19: Clarifying participant pair notifications
+
+**Status:** Complete.
+
+**Description:** Explain in pair confirmations, organizer change notices, and
+pair status messages that pairing only prevents participants from being
+assigned to each other in the draw.
+
+**Acceptance criteria:**
+- [x] English and Ukrainian participant messages clarify that a pair excludes
+  each participant from drawing the other and does not assign them to each
+  other.
+- [x] The README and product specification describe the same pair semantics.
+
+**Verification:**
+- [x] `SecretSantaBotTest` covers accepted pairs, organizer changes, pair
+  status, and both languages.
+- [x] Java 27 Docker build passes.
+
+**Dependencies:** Task 11
+
+**Files likely touched:**
+- `src/main/java/com/secretsanta/BotMessages.java`
+- `src/main/java/com/secretsanta/EnglishMessages.java`
+- `src/test/java/com/secretsanta/SecretSantaBotTest.java`
+- `README.md`
+- `docs/SPEC-secret-santa-telegram-bot.md`
+
+**Estimated scope:** Small
+
+## Checkpoint: Name Editing
+- [x] Domain and private UI tests pass.
+- [x] Name edits preserve participant identities/pairings and are blocked after
+  draw start.
+- [x] README documents the name-edit flow.
+- [x] Full Maven test suite passes in the Java 27 Docker build.
