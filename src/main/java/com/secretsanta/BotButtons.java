@@ -1,7 +1,9 @@
 package com.secretsanta;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 
@@ -14,6 +16,7 @@ final class BotButtons {
     static final String JOIN = ONBOARDING_PREFIX + "join";
     static final String JOIN_CONFIRM_PREFIX = ONBOARDING_PREFIX + "join:confirm:";
     static final String JOIN_EDIT_PREFIX = ONBOARDING_PREFIX + "join:edit:";
+    static final String PARTICIPANT_EDIT_NAME = "participant:edit-name";
     static final String OPEN = ONBOARDING_PREFIX + "open";
     static final String RESET = ONBOARDING_PREFIX + "reset";
     static final String RESET_CONFIRM_PREFIX = RESET + ":confirm:";
@@ -28,6 +31,9 @@ final class BotButtons {
     static final String PAIR_REQUEST_CANCEL_PREFIX = PAIR_REQUEST_PREFIX + "cancel:";
     static final String ORGANIZER_PAIR = "organizer:pair";
     static final String ORGANIZER_ROSTER = "organizer:roster";
+    static final String ORGANIZER_EDIT_NAMES = "organizer:edit-names";
+    static final String ORGANIZER_EDIT_NAME_TARGET_PREFIX =
+            ORGANIZER_EDIT_NAMES + ":target:";
     static final String ORGANIZER_RUN_DRAW = "organizer:run-draw";
     static final String ORGANIZER_DRAW_STATUS = "organizer:draw-status";
     static final String ORGANIZER_REPLACE_DRAW = "organizer:replace-draw";
@@ -80,8 +86,10 @@ final class BotButtons {
             case RESET -> "Reset exchange";
             case PAIR_REQUEST_CHOOSE -> "Request a partner";
             case PAIR_REQUEST_STATUS -> "My pair request";
+            case PARTICIPANT_EDIT_NAME -> "Edit my name";
             case ORGANIZER_PAIR -> "Manage pairs";
             case ORGANIZER_ROSTER -> "Participants";
+            case ORGANIZER_EDIT_NAMES -> "Edit participant names";
             case ORGANIZER_RUN_DRAW -> item.getText().equals("Повторити доставку")
                     ? "Retry delivery" : "Run the draw";
             case ORGANIZER_DRAW_STATUS -> "Exchange status";
@@ -119,7 +127,8 @@ final class BotButtons {
     static InlineKeyboardMarkup participantPairMenu() {
         return keyboard(List.of(
                 List.of(button("Запросити пару", PAIR_REQUEST_CHOOSE)),
-                List.of(button("Мій запит", PAIR_REQUEST_STATUS))));
+                List.of(button("Мій запит", PAIR_REQUEST_STATUS)),
+                List.of(button("Змінити моє ім'я", PARTICIPANT_EDIT_NAME))));
     }
 
     static InlineKeyboardMarkup organizerMenu(
@@ -132,6 +141,7 @@ final class BotButtons {
             rows.add(List.of(button("Скинути обмін", RESET)));
             rows.add(List.of(button("Керувати парами", ORGANIZER_PAIR)));
             rows.add(List.of(button("Список учасників", ORGANIZER_ROSTER)));
+            rows.add(List.of(button("Змінити ім'я учасника", ORGANIZER_EDIT_NAMES)));
             rows.add(List.of(button("Провести жеребкування", ORGANIZER_RUN_DRAW)));
             if (registeredParticipant) {
                 rows.addAll(participantPairMenu().getKeyboard());
@@ -204,6 +214,25 @@ final class BotButtons {
             rows.add(List.of(button(
                     participant.name(),
                     callbackPrefix + participant.chatId())));
+        }
+        return keyboard(rows);
+    }
+
+    static InlineKeyboardMarkup participantNameEditTargets(
+            List<SecretSantaBot.Participant> participants, String token) {
+        Map<String, Integer> nameCounts = new HashMap<>();
+        for (SecretSantaBot.Participant participant : participants) {
+            nameCounts.merge(participant.name(), 1, Integer::sum);
+        }
+        Map<String, Integer> namePositions = new HashMap<>();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+        for (SecretSantaBot.Participant participant : participants) {
+            String name = participant.name();
+            int position = namePositions.merge(name, 1, Integer::sum);
+            String label = nameCounts.get(name) > 1 ? name + " (" + position + ")" : name;
+            rows.add(List.of(button(
+                    label,
+                    ORGANIZER_EDIT_NAME_TARGET_PREFIX + token + ":" + participant.chatId())));
         }
         return keyboard(rows);
     }

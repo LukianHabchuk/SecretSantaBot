@@ -29,6 +29,8 @@ final class BotButtonController {
     private final BotCommandMenu commandMenu;
     private final Map<Long, PendingInput> pendingInputs = new HashMap<>();
     private final Map<Long, PendingJoin> pendingJoins = new HashMap<>();
+    private final Map<Long, Long> pendingNameEditTargets = new HashMap<>();
+    private final Map<Long, String> pendingOrganizerNameTokens = new HashMap<>();
     private final Map<Long, String> pendingResetTokens = new HashMap<>();
     private final Map<Long, String> pendingCleanupTokens = new HashMap<>();
     private final Map<Long, String> pendingReplacementTokens = new HashMap<>();
@@ -63,6 +65,7 @@ final class BotButtonController {
         organizerPairActions = Map.of(
                 BotButtons.ORGANIZER_PAIR, this::startPairingFromButton,
                 BotButtons.ORGANIZER_ROSTER, this::showOrganizerRoster,
+                BotButtons.ORGANIZER_EDIT_NAMES, this::requestOrganizerNameEdit,
                 BotButtons.ORGANIZER_RUN_DRAW, this::runDrawFromButton,
                 BotButtons.ORGANIZER_DRAW_STATUS, this::showDrawStatus,
                 BotButtons.ORGANIZER_REPLACE_DRAW, this::requestReplacementConfirmation,
@@ -102,6 +105,7 @@ final class BotButtonController {
         inputHandlers.put(PendingInput.SETUP_CODE, this::claimOrganizer);
         inputHandlers.put(PendingInput.INVITE_CODE, this::promptJoinName);
         inputHandlers.put(PendingInput.JOIN_NAME, this::updateJoinName);
+        inputHandlers.put(PendingInput.EDIT_NAME, this::updateParticipantName);
     }
 
     boolean isAwaitingInput(long userId) {
@@ -117,6 +121,8 @@ final class BotButtonController {
         commandMenu.refreshForUser(userId);
         pendingInputs.remove(userId);
         pendingJoins.remove(userId);
+        pendingNameEditTargets.remove(userId);
+        pendingOrganizerNameTokens.remove(userId);
         pendingResetTokens.remove(userId);
         pendingCleanupTokens.remove(userId);
         pendingReplacementTokens.remove(userId);
@@ -157,6 +163,7 @@ final class BotButtonController {
             case SETUP_CODE -> "input_setup_code";
             case INVITE_CODE -> "input_invite_code";
             case JOIN_NAME -> "input_join_name";
+            case EDIT_NAME -> "input_edit_name";
         });
         inputHandlers.get(pendingInput).accept(new InputContext(userId, firstName), input);
     }
@@ -220,11 +227,19 @@ final class BotButtonController {
             participantPairController.handleCallbackQuery(callback);
             return;
         }
+        if (BotButtons.PARTICIPANT_EDIT_NAME.equals(data)) {
+            requestOwnNameEdit(callback);
+            return;
+        }
         if (data != null && data.startsWith(BotButtons.DRAW_RECEIVED_PREFIX)) {
             confirmDrawReceipt(callback);
             return;
         }
         if (!isOrganizerForCallback(userId, callback.getId())) {
+            return;
+        }
+        if (data != null && data.startsWith(BotButtons.ORGANIZER_EDIT_NAME_TARGET_PREFIX)) {
+            selectOrganizerNameEditTarget(callback);
             return;
         }
         Consumer<CallbackQuery> organizerPairAction =
@@ -263,7 +278,9 @@ final class BotButtonController {
             case BotButtons.RESET -> "button_reset";
             case BotButtons.ORGANIZER_PAIR -> "button_pair";
             case BotButtons.ORGANIZER_ROSTER -> "button_roster";
+            case BotButtons.ORGANIZER_EDIT_NAMES -> "button_edit_names";
             case BotButtons.ORGANIZER_CLEANUP -> "button_cleanup";
+            case BotButtons.PARTICIPANT_EDIT_NAME -> "button_edit_own_name";
             case BotButtons.PAIR_REQUEST_CHOOSE -> "button_pair_request";
             case BotButtons.PAIR_REQUEST_STATUS -> "button_pair_status";
             default -> null;
@@ -278,6 +295,9 @@ final class BotButtonController {
         if (data.startsWith(BotButtons.CLEANUP_CONFIRM_PREFIX)) return "button_cleanup_confirm";
         if (data.startsWith(BotButtons.CLEANUP_CANCEL_PREFIX)) return "button_cleanup_cancel";
         if (data.startsWith(BotButtons.PAIR_REQUEST_TARGET_PREFIX)) return "button_pair_target";
+        if (data.startsWith(BotButtons.ORGANIZER_EDIT_NAME_TARGET_PREFIX)) {
+            return "button_edit_name_target";
+        }
         if (data.startsWith(BotButtons.PAIR_REQUEST_ACCEPT_PREFIX)) return "button_pair_accept";
         if (data.startsWith(BotButtons.PAIR_REQUEST_DECLINE_PREFIX)) return "button_pair_decline";
         if (data.startsWith(BotButtons.PAIR_REQUEST_CANCEL_PREFIX)) return "button_pair_cancel";
@@ -352,6 +372,91 @@ final class BotButtonController {
                     language, participants, exchangeService.state().pairRequests()));
         }
         responder.answerCallback(callback.getId(), BotMessages.PAIR_STATUS_CALLBACK);
+    }
+
+    private void requestOwnNameEdit(CallbackQuery callback) {
+        long userId = callback.getFrom().getId();
+        if (!isRegistrationOpen()) {
+            responder.answerCallback(callback.getId(), BotMessages.NAME_EDIT_CLOSED_CALLBACK);
+            responder.sendText(userId, BotMessages.NAME_EDIT_CLOSED);
+            return;
+        }
+        if (exchangeService.participant(userId).isEmpty()) {
+            responder.answerCallback(callback.getId(), BotMessages.ACTION_UNAVAILABLE);
+            responder.sendText(userId, BotMessages.NAME_EDIT_UNAVAILABLE);
+            return;
+        }
+        pendingOrganizerNameTokens.remove(userId);
+        requestNameInput(userId, userId);
+        responder.answerCallback(callback.getId(), BotMessages.NAME_EDIT_PROMPT_CALLBACK);
+    }
+
+    private void requestOrganizerNameEdit(CallbackQuery callback) {
+        long userId = callback.getFrom().getId();
+        if (!isRegistrationOpen()) {
+            responder.answerCallback(callback.getId(), BotMessages.NAME_EDIT_CLOSED_CALLBACK);
+            responder.sendText(userId, BotMessages.NAME_EDIT_CLOSED);
+            return;
+        }
+        List<SecretSantaBot.Participant> participants = exchangeService.participants();
+        if (participants.isEmpty()) {
+            responder.answerCallback(callback.getId(), BotMessages.PARTICIPANTS_CHANGED);
+            responder.sendText(userId, BotMessages.EMPTY_ROSTER);
+            return;
+        }
+        pendingInputs.remove(userId);
+        pendingNameEditTargets.remove(userId);
+        String token = newToken();
+        pendingOrganizerNameTokens.put(userId, token);
+        responder.sendWithKeyboard(
+                userId,
+                BotMessages.NAME_EDIT_TARGETS_PROMPT,
+                BotButtons.participantNameEditTargets(participants, token));
+        responder.answerCallback(
+                callback.getId(), BotMessages.NAME_EDIT_TARGETS_CALLBACK);
+    }
+
+    private void selectOrganizerNameEditTarget(CallbackQuery callback) {
+        long userId = callback.getFrom().getId();
+        String[] parts = callback.getData()
+                .substring(BotButtons.ORGANIZER_EDIT_NAME_TARGET_PREFIX.length())
+                .split(":", -1);
+        if (parts.length != 2
+                || parts[0].isBlank()
+                || !Objects.equals(pendingOrganizerNameTokens.get(userId), parts[0])) {
+            responder.answerCallback(callback.getId(), BotMessages.STALE_BUTTON);
+            return;
+        }
+        if (!isRegistrationOpen()) {
+            pendingOrganizerNameTokens.remove(userId);
+            responder.answerCallback(callback.getId(), BotMessages.NAME_EDIT_CLOSED_CALLBACK);
+            responder.sendText(userId, BotMessages.NAME_EDIT_CLOSED);
+            return;
+        }
+
+        long participantId;
+        try {
+            participantId = Long.parseLong(parts[1]);
+        } catch (NumberFormatException exception) {
+            responder.answerCallback(callback.getId(), BotMessages.INVALID_PARTICIPANT_SELECTION);
+            return;
+        }
+        if (exchangeService.participant(participantId).isEmpty()) {
+            pendingOrganizerNameTokens.remove(userId);
+            responder.answerCallback(callback.getId(), BotMessages.PARTICIPANTS_CHANGED);
+            responder.sendText(userId, BotMessages.PARTICIPANTS_CHANGED);
+            return;
+        }
+
+        pendingOrganizerNameTokens.remove(userId);
+        requestNameInput(userId, participantId);
+        responder.answerCallback(callback.getId(), BotMessages.NAME_EDIT_PROMPT_CALLBACK);
+    }
+
+    private void requestNameInput(long editorId, long participantId) {
+        pendingNameEditTargets.put(editorId, participantId);
+        pendingInputs.put(editorId, PendingInput.EDIT_NAME);
+        responder.sendText(editorId, BotMessages.NAME_EDIT_PROMPT);
     }
 
     private void runDrawFromButton(CallbackQuery callback) {
@@ -543,6 +648,39 @@ final class BotButtonController {
         showJoinConfirmation(
                 userId,
                 new PendingJoin(pendingJoin.inviteCode(), name, newToken()));
+    }
+
+    private void updateParticipantName(InputContext context, String name) {
+        long userId = context.userId();
+        Long participantId = pendingNameEditTargets.get(userId);
+        if (participantId == null) {
+            responder.sendText(userId, BotMessages.NAME_EDIT_UNAVAILABLE);
+            return;
+        }
+
+        try {
+            ExchangeService.NameUpdateResult result =
+                    exchangeService.updateParticipantName(userId, participantId, name);
+            if (result == ExchangeService.NameUpdateResult.INVALID_NAME) {
+                pendingInputs.put(userId, PendingInput.EDIT_NAME);
+                responder.sendText(userId, BotMessages.NAME_EDIT_INVALID);
+                return;
+            }
+            pendingNameEditTargets.remove(userId);
+            responder.sendText(userId, BotMessages.NAME_EDIT_SAVED);
+            showStartMenu(userId, userId, true);
+        } catch (IllegalStateException exception) {
+            pendingNameEditTargets.remove(userId);
+            responder.sendText(userId, BotMessages.NAME_EDIT_CLOSED);
+            showStartMenu(userId, userId, true);
+        } catch (IllegalArgumentException | SecurityException exception) {
+            pendingNameEditTargets.remove(userId);
+            responder.sendText(userId, BotMessages.NAME_EDIT_UNAVAILABLE);
+        } catch (IOException exception) {
+            LOGGER.log(Level.SEVERE, BotLogMessages.NAME_UPDATE_PERSIST_FAILED, exception);
+            pendingInputs.put(userId, PendingInput.EDIT_NAME);
+            responder.sendText(userId, BotMessages.NAME_EDIT_FAILED);
+        }
     }
 
     private void showJoinConfirmation(long userId, PendingJoin pendingJoin) {
@@ -898,7 +1036,8 @@ final class BotButtonController {
     private enum PendingInput {
         SETUP_CODE,
         INVITE_CODE,
-        JOIN_NAME
+        JOIN_NAME,
+        EDIT_NAME
     }
 
     private record PendingJoin(String inviteCode, String suggestedName, String confirmationToken) {}

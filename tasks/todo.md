@@ -346,7 +346,7 @@ record without changing identity or pair state.
 
 ## Task 17: Adding private name-edit controls
 
-**Status:** In progress.
+**Status:** Complete.
 
 **Description:** Add a private edit-name action for registered participants and
 an organizer flow to select and rename any roster participant. Use the existing
@@ -354,17 +354,18 @@ pending-input and localized button patterns; disambiguate duplicate display
 names and reject stale callbacks.
 
 **Acceptance criteria:**
-- [ ] A registered participant can edit their own name in private chat before
+- [x] A registered participant can edit their own name in private chat before
   the draw; the organizer can select and edit any participant.
-- [ ] Organizer target selection remains unambiguous when names are duplicated,
+- [x] Organizer target selection remains unambiguous when names are duplicated,
   and callback actions are re-authorized and bound to the current selection.
-- [ ] Invalid names, closed registration, and persistence failures are reported
+- [x] Invalid names, closed registration, and persistence failures are reported
   explicitly without claiming success.
 
 **Verification:**
-- [ ] Focused `SecretSantaBotTest` covers participant edits, organizer edits
+- [x] `SecretSantaBotTest` covers participant edits, organizer edits
   (including duplicate names), private-only behavior, and post-draw rejection.
-- [ ] `mvn -Dtest=SecretSantaBotTest,EnglishMessagesTest test` passes on Java 27.
+- [x] Java 27 Docker build passes, including `SecretSantaBotTest` and
+  `EnglishMessagesTest`.
 
 **Dependencies:** Tasks 9 and 16
 
@@ -373,12 +374,36 @@ names and reject stale callbacks.
 - `src/main/java/com/secretsanta/BotButtons.java`
 - `src/main/java/com/secretsanta/BotMessages.java`
 - `src/main/java/com/secretsanta/EnglishMessages.java`
+- `src/main/java/com/secretsanta/BotLogMessages.java`
 - `src/test/java/com/secretsanta/SecretSantaBotTest.java`
 
-**Estimated scope:** Medium
+**Estimated scope:** Medium (six files including focused tests)
+
+## Task 18: Documenting pre-draw name edits
+
+**Status:** Complete.
+
+**Description:** Update the operator walkthrough to explain that participants
+can edit their own registered names and the organizer can edit any participant's
+name before the draw.
+
+**Acceptance criteria:**
+- [x] README explains where participants and organizers access name editing.
+- [x] README states that edits are unavailable after the draw starts.
+
+**Verification:**
+- [x] Reviewed the README flow against the localized button labels.
+
+**Dependencies:** Task 17
+
+**Files likely touched:**
+- `README.md`
+
+**Estimated scope:** Small
 
 ## Checkpoint: Name Editing
-- [ ] Domain and private UI tests pass.
-- [ ] Name edits preserve participant identities/pairings and are blocked after
+- [x] Domain and private UI tests pass.
+- [x] Name edits preserve participant identities/pairings and are blocked after
   draw start.
-- [ ] Full Maven test suite passes.
+- [x] README documents the name-edit flow.
+- [x] Full Maven test suite passes in the Java 27 Docker build.

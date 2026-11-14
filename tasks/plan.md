@@ -1,8 +1,9 @@
 # Implementation Plan: Private Secret Santa Exchange
 
 ## Status
-Approved implementation plan for the revised specification. Tasks 10 and 11 are
-complete; Task 12 is next in the ordered implementation sequence.
+Approved implementation plan for the revised specification and pre-draw name
+editing. Tasks 16-18 are complete; the separate live test-bot walkthrough
+remains pending test-bot access.
 
 ## Overview
 Extend the existing Java 27 Telegram bot from transient registration and
@@ -79,9 +80,10 @@ Completed Java/Maven, assignment, organizer, and delivery foundations (Tasks 1-6
   -> 13 receipt confirmation and deletion
   -> 14 complete replacement draws and generation-safe callbacks
   -> 15 simulator, operating docs, and test-bot walkthrough
-  -> 16 persisted participant display-name updates
-  -> 17 private participant and organizer name-edit controls
 ```
+
+The name-edit branch depends on existing onboarding and persistence:
+Task 8 -> Task 16; Tasks 9 and 16 -> Task 17 -> Task 18.
 
 ## Task List
 
@@ -127,12 +129,14 @@ Completed Java/Maven, assignment, organizer, and delivery foundations (Tasks 1-6
 - Task 16: Add an authorized, persisted display-name update to the exchange
   service.
 - Task 17: Add private name-edit controls for participants and the organizer.
+- Task 18: Document participant and organizer name-edit actions in the README.
 
 ### Checkpoint: Name Editing
 - Participants can privately edit their own names and the organizer can edit
   any participant's name while registration is open.
 - Name edits persist across restart, preserve participant identity and pairs,
   reject invalid or post-draw edits, and report persistence failures.
+- The README describes both name-edit paths and their pre-draw availability.
 
 ### Checkpoint: Complete
 - All approved specification criteria have tests or a documented manual check.

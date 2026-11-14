@@ -402,6 +402,97 @@ class SecretSantaBotTest {
     }
 
     @Test
+    void registeredParticipantCanEditTheirNameInPrivateChat() throws Exception {
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(createService(), messenger);
+        String inviteCode = openRegistration(bot, messenger);
+        bot.onUpdateReceived(update(201L, 201L, "private", "/join " + inviteCode + " Alex"));
+        bot.onUpdateReceived(update(201L, 201L, "private", "/start"));
+
+        String editCallback = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Змінити моє ім'я");
+        bot.onUpdateReceived(callbackUpdate(editCallback, 201L, -100L, "group-edit-name"));
+        assertTrue(messenger.callbackAnswers.getLast().text().contains("особистому чаті"));
+        bot.onUpdateReceived(callbackUpdate(editCallback, 201L, 201L, "edit-name"));
+        bot.onUpdateReceived(update(201L, 201L, "private", "  "));
+        assertTrue(messenger.sentMessages.getLast().text().contains("Ім'я має містити"));
+        bot.onUpdateReceived(update(201L, 201L, "private", "  Alex Updated  "));
+
+        ExchangeState state = new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow();
+        assertEquals("Alex Updated", state.participants().stream()
+                .filter(participant -> participant.userId() == 201L)
+                .findFirst().orElseThrow().name());
+        assertTrue(messenger.sentMessages.stream().anyMatch(message ->
+                message.chatId() == 201L && message.text().contains("Ім'я оновлено")));
+    }
+
+    @Test
+    void organizerCanEditTheIntendedParticipantWhenNamesAreDuplicate() throws Exception {
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(createService(), messenger);
+        String inviteCode = openRegistration(bot, messenger);
+        bot.onUpdateReceived(update(201L, 201L, "private", "/join " + inviteCode + " Alex"));
+        bot.onUpdateReceived(update(202L, 202L, "private", "/join " + inviteCode + " Alex"));
+        bot.onUpdateReceived(update(100L, 100L, "private", "/start"));
+
+        String editCallback = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Змінити ім'я учасника");
+        bot.onUpdateReceived(callbackUpdate(editCallback, 100L, 100L, "edit-names"));
+        String secondParticipant = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Alex (2)");
+        bot.onUpdateReceived(callbackUpdate(
+                secondParticipant, 100L, 100L, "select-second-participant"));
+        bot.onUpdateReceived(update(100L, 100L, "private", "Sam"));
+
+        ExchangeState state = new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow();
+        assertEquals("Alex", state.participants().stream()
+                .filter(participant -> participant.userId() == 201L)
+                .findFirst().orElseThrow().name());
+        assertEquals("Sam", state.participants().stream()
+                .filter(participant -> participant.userId() == 202L)
+                .findFirst().orElseThrow().name());
+    }
+
+    @Test
+    void participantCannotStartOrganizerNameEditing() throws Exception {
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(createService(), messenger);
+        String inviteCode = openRegistration(bot, messenger);
+        bot.onUpdateReceived(update(201L, 201L, "private", "/join " + inviteCode + " Alex"));
+
+        bot.onUpdateReceived(callbackUpdate(
+                BotButtons.ORGANIZER_EDIT_NAMES, 201L, 201L, "unauthorized-edit-names"));
+
+        assertTrue(messenger.callbackAnswers.getLast().text().contains("лише організатору"));
+        ExchangeState state = new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow();
+        assertEquals("Alex", state.participants().stream()
+                .filter(participant -> participant.userId() == 201L)
+                .findFirst().orElseThrow().name());
+    }
+
+    @Test
+    void staleParticipantNameEditButtonCannotRenameAfterDrawStarts() throws Exception {
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(createService(), messenger);
+        String inviteCode = openRegistration(bot, messenger);
+        bot.onUpdateReceived(update(201L, 201L, "private", "/join " + inviteCode + " Alex"));
+        bot.onUpdateReceived(update(202L, 202L, "private", "/join " + inviteCode + " Sam"));
+        bot.onUpdateReceived(update(201L, 201L, "private", "/start"));
+        String staleEditCallback = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Змінити моє ім'я");
+
+        bot.onUpdateReceived(update(100L, 100L, "private", "/run"));
+        bot.onUpdateReceived(callbackUpdate(
+                staleEditCallback, 201L, 201L, "stale-name-edit"));
+        bot.onUpdateReceived(update(201L, 201L, "private", "Changed"));
+
+        ExchangeState state = new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow();
+        assertEquals("Alex", state.participants().stream()
+                .filter(participant -> participant.userId() == 201L)
+                .findFirst().orElseThrow().name());
+    }
+
+    @Test
     void organizerIsNotifiedPrivatelyOnceWhenParticipantJoinsThroughButtons() throws Exception {
         TestTelegramMessenger messenger = new TestTelegramMessenger();
         SecretSantaBot bot = createBot(createService(), messenger);

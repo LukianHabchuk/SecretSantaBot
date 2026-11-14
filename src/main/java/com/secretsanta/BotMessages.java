@@ -24,6 +24,22 @@ final class BotMessages {
     static final String INVITE_INVALID = "❌ Код запрошення недійсний. Спробуй ще раз.";
     static final String JOIN_NAME_INVALID = "❌ Введи ім'я від 1 до 64 символів.";
     static final String JOIN_NAME_PROMPT = "Введи ім'я, яке побачать учасники.";
+    static final String NAME_EDIT_PROMPT = "Введи нове ім'я, яке побачать учасники.";
+    static final String NAME_EDIT_PROMPT_CALLBACK = "Введи ім'я в цьому особистому чаті.";
+    static final String NAME_EDIT_INVALID =
+            "❌ Ім'я має містити від 1 до 64 символів без керівних символів.";
+    static final String NAME_EDIT_SAVED = "✅ Ім'я оновлено.";
+    static final String NAME_EDIT_CLOSED_CALLBACK =
+            "Імена можна змінювати лише до початку жеребкування.";
+    static final String NAME_EDIT_CLOSED =
+            "❌ Ім'я можна змінити лише до початку жеребкування.";
+    static final String NAME_EDIT_UNAVAILABLE =
+            "❌ Не вдалося змінити ім'я. Перевір, що учасник зареєстрований.";
+    static final String NAME_EDIT_FAILED =
+            "❌ Не вдалося зберегти ім'я. Спробуй ще раз.";
+    static final String NAME_EDIT_TARGETS_PROMPT =
+            "Обери учасника, ім'я якого потрібно змінити:";
+    static final String NAME_EDIT_TARGETS_CALLBACK = "Обери учасника.";
     static final String JOIN_INVITE_PROMPT = "Введи запрошувальний код обміну.";
     static final String SETUP_CODE_PROMPT =
             "Введи код налаштування, щоб підтвердити права організатора.";
