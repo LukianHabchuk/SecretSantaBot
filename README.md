@@ -292,9 +292,20 @@ To walk through an exchange:
    messages are printed locally by the simulator. To exercise a retry, run
    `fail <user-id>` before the draw, then `recover <user-id>`, send `/start`
    as the organizer, and press **Retry delivery**.
-5. Each participant can confirm receipt from their assignment keyboard. After
-   all confirmations, the organizer can explicitly start a replacement draw or
-   clean up the exchange; cleanup preserves organizer access.
+5. After every original assignment has been delivered, the organizer can send
+   `/start` and choose **Open late registration**. Receipt confirmations are not
+   required. The bot creates a fresh invite code and sends it only to the
+   organizer's private chat; the original assignments remain active while late
+   participants join with that code.
+6. When the late participants have joined, the organizer can choose **Run a new
+   draw**. Review the prompt and explicitly confirm to replace assignments for
+   everyone; canceling leaves the current draw unchanged. Existing participants
+   receive replacement wording, while late participants receive normal
+   first-assignment wording. In the late-registration phase, `/run` does not
+   replace assignments.
+7. Each participant can confirm receipt from the replacement assignment
+   keyboard. After all confirmations, the organizer can clean up the exchange;
+   cleanup preserves organizer access.
 
 The simulator uses a fake message sender, creates a fresh encryption key and
 temporary data directory for each run, and removes that directory on exit. It
@@ -402,6 +413,20 @@ recipient. Previous receipt buttons then become stale, and incomplete
 replacement delivery resumes with the same assignments. If Telegram accepted a
 message just before the process stopped, retrying may send that same assignment
 again.
+
+After a fully delivered draw, the organizer can choose **Open late
+registration** to create a fresh invite code. Full delivery means all original
+assignment messages were sent; participants do not have to confirm receipt
+first. The bot sends the code only to the organizer's private chat and keeps the
+current assignments active while the late participant joins. The code is valid
+for this late-registration window and closes when the replacement draw is
+persisted. The organizer must then use **Run a new draw** and explicitly confirm
+to replace assignments for the expanded roster. Canceling keeps the retained
+draw. Participants who already had an assignment receive replacement wording;
+late joiners receive normal first-assignment wording. `/run` does not bypass this
+confirmation while late registration is open. The encrypted replacement
+generation resumes with the same assignments after a restart when the same
+data key is configured.
 
 On startup, legacy encrypted `pending-draw.enc` data is migrated into the
 current exchange snapshot only when it can be decrypted with the configured

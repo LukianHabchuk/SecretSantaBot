@@ -1,6 +1,7 @@
 package com.secretsanta;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.BufferedReader;
@@ -22,7 +23,7 @@ class OfflineBotSimulatorTest {
 
     @Test
     void startCommandRunsAgainstLocalFakeMessenger() throws Exception {
-        String input = "fail 201\nrecover 201\nas 100 /start\nclick 2\nclick 1\nquit\n";
+        String input = "help\nfail 201\nrecover 201\nas 100 /start\nclick 2\nclick 1\nquit\n";
         ByteArrayOutputStream output = new ByteArrayOutputStream();
 
         OfflineBotSimulator.runSession(
@@ -37,6 +38,8 @@ class OfflineBotSimulatorTest {
         assertTrue(transcript.contains("[offline]"));
         assertTrue(transcript.contains("Simulated delivery failure for user 201."));
         assertTrue(transcript.contains("Simulated delivery restored for user 201."));
+        assertTrue(transcript.contains("Open late registration"));
+        assertTrue(transcript.contains("late participants receive their first assignment"));
         assertTrue(transcript.contains("[keyboard 1 for user 100]"));
         assertTrue(transcript.contains("Введи код налаштування"));
     }
@@ -104,12 +107,12 @@ class OfflineBotSimulatorTest {
         String inviteCode = inviteCode(session.latestMessageContaining(
                 100L, "Запрошувальний код:"));
 
-        join(session, 201L, inviteCode, "Alex");
+        joinEnglish(session, 201L, inviteCode, "Alex");
         join(session, 202L, inviteCode, "Sam");
         join(session, 203L, inviteCode, "Jamie");
 
         session.sendAs(201L, "/start");
-        session.clickButton(201L, "Запросити пару");
+        session.clickButton(201L, "Request a partner");
         session.clickButton(201L, "Sam");
         session.clickButton(202L, "Підтвердити пару");
 
@@ -129,17 +132,61 @@ class OfflineBotSimulatorTest {
 
         List<Long> exchangeUserIds = List.of(100L, 201L, 202L, 203L);
         for (long userId : exchangeUserIds) {
-            session.clickButton(userId, "Отримав подарункове завдання");
+            session.clickButton(
+                    userId,
+                    userId == 201L ? "I received my assignment" : "Отримав подарункове завдання");
         }
+
+        session.sendAs(100L, "/start");
+        session.clickButton(100L, "Відкрити пізню реєстрацію");
+        String lateInviteCode = inviteCode(session.latestMessageContaining(
+                100L, "Запрошувальний код:"));
+        assertFalse(inviteCode.equals(lateInviteCode));
+        ExchangeState lateRegistration = exchangeState();
+        assertEquals(ExchangeState.Phase.LATE_REGISTRATION_OPEN, lateRegistration.phase());
+        assertEquals(firstDraw.drawGeneration(), lateRegistration.drawGeneration());
+        assertEquals(firstDraw.assignments(), lateRegistration.assignments());
+
+        session.sendAs(204L, "/start");
+        session.clickButton(204L, "English");
+        session.clickButton(204L, "Join with a code");
+        session.sendAs(204L, lateInviteCode);
+        session.clickButton(204L, "Edit name");
+        session.sendAs(204L, "Taylor");
+        session.clickButton(204L, "Confirm name");
+        ExchangeState expandedRoster = exchangeState();
+        assertEquals(5, expandedRoster.participants().size());
+        assertEquals(firstDraw.drawGeneration(), expandedRoster.drawGeneration());
+        assertEquals(firstDraw.assignments(), expandedRoster.assignments());
+
+        session.sendAs(100L, "/start");
+        session.clickButton(100L, "Провести нове жеребкування");
+        ExchangeState beforeConfirmation = exchangeState();
+        assertEquals(expandedRoster, beforeConfirmation);
+        session.clickButton(100L, "Скасувати");
+        assertEquals(beforeConfirmation, exchangeState());
+
         session.sendAs(100L, "/start");
         session.clickButton(100L, "Провести нове жеребкування");
         session.clickButton(100L, "Так, замінити розподіл");
 
         ExchangeState replacement = exchangeState();
         assertEquals(2, replacement.drawGeneration());
+        assertEquals(5, replacement.assignments().size());
         assertTrue(replacement.confirmedUserIds().isEmpty());
-        for (long userId : exchangeUserIds) {
-            session.clickButton(userId, "Отримав подарункове завдання");
+        assertTrue(session.latestMessageContaining(201L, "The draw has been updated")
+                .contains("This replaces your previous assignment"));
+        assertTrue(session.latestMessageContaining(204L, "The Secret Santa draw is complete")
+                .contains("Your assignment"));
+        assertFalse(session.latestMessageContaining(204L, "The Secret Santa draw is complete")
+                .contains("This replaces your previous assignment"));
+        List<Long> replacementUserIds = List.of(100L, 201L, 202L, 203L, 204L);
+        for (long userId : replacementUserIds) {
+            session.clickButton(
+                    userId,
+                    userId == 201L || userId == 204L
+                            ? "I received my assignment"
+                            : "Отримав подарункове завдання");
         }
 
         session.sendAs(100L, "/start");
@@ -163,6 +210,17 @@ class OfflineBotSimulatorTest {
         session.clickButton(userId, "Змінити ім'я");
         session.sendAs(userId, name);
         session.clickButton(userId, "Підтвердити ім'я");
+    }
+
+    private void joinEnglish(
+            OfflineBotSimulator.Session session, long userId, String inviteCode, String name) {
+        session.sendAs(userId, "/start");
+        session.clickButton(userId, "English");
+        session.clickButton(userId, "Join with a code");
+        session.sendAs(userId, inviteCode);
+        session.clickButton(userId, "Edit name");
+        session.sendAs(userId, name);
+        session.clickButton(userId, "Confirm name");
     }
 
     private ExchangeState exchangeState() throws Exception {

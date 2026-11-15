@@ -626,10 +626,10 @@ reuse the confirmed replacement action once late participants have joined.
 **Estimated scope:** Medium
 
 ## Checkpoint: Organizer Flow
-- [ ] Late enrollment and explicit replacement are available through private
+- [x] Late enrollment and explicit replacement are available through private
   organizer buttons in both languages.
-- [ ] Unauthorized, stale, and premature actions leave state unchanged.
-- [ ] Human reviews the organizer flow before final documentation.
+- [x] Unauthorized, stale, and premature actions leave state unchanged.
+- [x] Human reviews the organizer flow before final documentation.
 
 ## Task 25: Verifying and documenting late enrollment
 
@@ -638,15 +638,15 @@ late registration, the replacement confirmation, and the distinct assignment
 messages for existing participants and the late joiner.
 
 **Acceptance criteria:**
-- [ ] The simulator demonstrates a late participant joining by the fresh
+- [x] The simulator demonstrates a late participant joining by the fresh
   late-window invite and a complete replacement delivered to everyone.
-- [ ] README explains the eligibility, invite-code window, explicit reroll,
+- [x] README explains the eligibility, invite-code window, explicit reroll,
   replacement impact, and restart-safe delivery.
 
 **Verification:**
-- [ ] `mvn -Dtest=OfflineBotSimulatorTest test`
-- [ ] `mvn clean test`
-- [ ] `mvn clean package` on JDK 27.
+- [x] `mvn -Dtest=OfflineBotSimulatorTest test`
+- [x] `mvn clean test` on JDK 27 (177 tests pass).
+- [x] `mvn clean package` on JDK 27 (177 tests pass and JAR built).
 
 **Dependencies:** Task 24
 
@@ -658,7 +658,7 @@ messages for existing participants and the late joiner.
 **Estimated scope:** Small
 
 ## Checkpoint: Late Enrollment Complete
-- [ ] All Phase 7 acceptance criteria pass.
-- [ ] Offline simulator and README reflect the approved specification.
-- [ ] Full Maven tests and package build pass on JDK 27.
+- [x] All Phase 7 acceptance criteria pass.
+- [x] Offline simulator and README reflect the approved specification.
+- [x] Full Maven tests and package build pass on JDK 27.
 - [ ] Human approves the implementation handoff.
