@@ -39,7 +39,7 @@ roster, pair exclusions, and their own assignment, especially in a small group.
   including me, receives only their own assignment in the same private chat.
 - As the organizer, after a draw has been fully delivered, I can explicitly
   reopen registration so a friend who missed the first draw can join privately
-  with the existing invite code.
+  with a fresh invite code for the late-enrollment window.
 - As the organizer, after late participants have joined, I can explicitly
   confirm a complete replacement draw. Everyone receives a new private
   assignment message, and the previous draw is superseded.
@@ -64,11 +64,11 @@ arbitrary non-partner exclusions are out of scope.
   participant; the organizer can change it directly.
 - Assignment cannot start while any participant pair request is unresolved.
   Requests must first be accepted, declined, or canceled by the requester.
-- The invitation is valid during initial registration until the first
-  assignment starts. After a draw is fully delivered, the organizer may
-  explicitly reopen registration; the same invite code is valid during this
-  late-enrollment window. Starting a replacement draw closes registration
-  again.
+- The initial invitation is valid until the first assignment starts. After a
+  draw is fully delivered, the organizer may explicitly reopen registration;
+  the bot generates a fresh invite code for that late-enrollment window and
+  sends it only to the organizer. Starting a replacement draw closes the
+  window and invalidates that code.
 - Before assignment starts, participants may edit their own display names and
   the organizer may edit any participant's display name. Name edits use the
   existing signup validation and do not change participant identity or pairing
@@ -79,11 +79,14 @@ arbitrary non-partner exclusions are out of scope.
   and before exchange cleanup. It replaces the prior assignments for everyone;
   each recipient must be told that the new result supersedes their previous one.
 - Late enrollment is available only after the current draw is fully delivered
-  and before cleanup. A late participant joins through the normal private
-  invite-code flow and signup validation. The organizer then explicitly
-  confirms a complete replacement draw, which closes registration. Existing
-  participants and accepted pairs remain; the new participant joins unpaired.
-  Any unresolved pair requests must be resolved before the replacement draw.
+  and before cleanup. Each organizer-opened window gets a fresh invite code,
+  which is sent only to the organizer and remains valid through that window,
+  including across restarts. A late participant joins through the normal
+  private invite-code flow and signup validation. The organizer then explicitly
+  confirms a complete replacement draw, which closes the window and invalidates
+  its code. Existing participants and accepted pairs remain; the new
+  participant joins unpaired. Any unresolved pair requests must be resolved
+  before the replacement draw.
 - Confirmation applies only to the current draw. A replacement draw clears all
   prior confirmations. Stale buttons from an older draw cannot confirm the new
   one.
@@ -182,10 +185,11 @@ delivery payloads. Do not place credentials or keys in source files or docs.
    as the participant identity. It does not collect usernames, phone numbers, or
    other profile fields unless separately approved.
 5. The invitation is reusable for the active exchange during initial
-   registration. The organizer may reopen registration with that same invite
-   code after a draw is fully delivered; registration closes again when the
-   organizer confirms a replacement draw. A restart does not invalidate the
-   invitation or discard the roster.
+   registration. After a draw is fully delivered, the organizer may reopen
+   registration and the bot generates a fresh invite code for that window,
+   which it sends only to the organizer. Confirming a replacement draw closes
+   the window and invalidates its code. A restart does not invalidate the
+   current invitation or discard the roster.
 6. Persist the active exchange across restarts, including participant IDs and
    display names, invite/registration state, accepted pairs, pending pair
    requests, current assignment generation, delivery progress, and current-draw
@@ -254,11 +258,13 @@ delivery payloads. Do not place credentials or keys in source files or docs.
     participant even when display names are identical.
 19. After a draw is fully delivered and before cleanup, the organizer can
     explicitly reopen registration. During this window, a late participant can
-    start the bot privately, enter the existing invite code, and complete the
-    normal signup/name-confirmation flow. Reject joins outside this window,
-    duplicate joins, invalid invite codes, and non-private interactions without
-    changing the exchange. Preserve existing participants, accepted pairs, and
-    the current draw until a replacement is confirmed.
+    start the bot privately, enter the fresh invite code generated for this
+    window, and complete the normal signup/name-confirmation flow. Send the code
+    only to the organizer, persist it across restart, and invalidate it when
+    the window closes. Reject joins outside this window, duplicate joins,
+    invalid invite codes, and non-private interactions without changing the
+    exchange. Preserve existing participants, accepted pairs, and the current
+    draw until a replacement is confirmed.
 20. After one or more late participants join, the organizer can explicitly
     confirm a complete replacement draw. Confirmation closes late registration
     and uses the existing replacement-draw rules: require complete prior
@@ -336,9 +342,10 @@ delivery payloads. Do not place credentials or keys in source files or docs.
   tracking/reset on reroll, and deletion only after all current participants
   confirm.
 - Test that late enrollment is organizer-opened, only available after complete
-  delivery and before cleanup, uses the existing invite/private signup flow,
-  rejects duplicates and out-of-window joins, and preserves existing roster
-  and pair state. Test that a confirmed replacement includes the late
+  delivery and before cleanup, generates an organizer-only code that survives
+  restart, uses the normal private signup flow, invalidates the code when
+  closed, rejects duplicates and out-of-window joins, and preserves existing
+  roster and pair state. Test that a confirmed replacement includes the late
   participant, sends replacement notices to previous participants and
   first-assignment notices to late joiners, retains private assignment delivery,
   and retries the same generation after failure.
@@ -385,8 +392,9 @@ delivery payloads. Do not place credentials or keys in source files or docs.
 - Failed delivery never triggers a new draw; explicit complete redraws notify
   everyone and replace all assignments consistently.
 - After a fully delivered draw, the organizer can open a late-enrollment window;
-  a friend can join privately with the existing invite code, and an explicitly
-  confirmed replacement includes them and sends a new assignment to everyone.
+  the bot sends a fresh invite code only to the organizer, a friend can join
+  privately with it, and an explicitly confirmed replacement includes them and
+  sends a new assignment to everyone.
 - Cleanup is unavailable until every participant confirms the current draw and
   the organizer confirms deletion.
 - Tests/build pass and a separate test-bot walkthrough verifies Telegram

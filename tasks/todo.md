@@ -441,8 +441,8 @@ assigned to each other in the draw.
 ## Phase 7: Late Enrollment and Complete Replacement
 
 The approved specification adds organizer-controlled late enrollment after a
-fully delivered draw. The organizer reuses the current invite code, then
-explicitly confirms a complete replacement draw for the expanded roster.
+fully delivered draw. The organizer opens the window to generate a fresh invite
+code, then explicitly confirms a complete replacement draw for the expanded roster.
 Existing participants receive replacement notices; late joiners receive
 first-assignment notices. Do not start these tasks until the Phase 7 plan
 extension in `tasks/plan.md` is approved.
@@ -478,18 +478,22 @@ encrypted phase ordinals.
 
 **Estimated scope:** Small
 
-## Task 21: Reopening enrollment with the existing invite
+## Task 21: Reopening enrollment with a fresh invite
 
 **Description:** Add an organizer-authorized transition to late registration
-after a fully delivered draw and allow new identities to join through the
-existing invite/name flow. Preserve the current draw until replacement is
-confirmed.
+after a fully delivered draw. Generate and persist a fresh invite code for the
+late window, send it only to the organizer, and allow new identities to join
+through the existing private signup/name flow. Preserve the current draw until
+replacement is confirmed.
 
 **Acceptance criteria:**
 - [ ] Only the organizer can open late enrollment, and only after all current
   assignments are delivered and before cleanup.
-- [ ] The same invite code accepts valid new participants; invalid codes,
-  duplicate users, and joins outside the late window are rejected.
+- [ ] A fresh invite code is generated for each late window, survives restart,
+  and is sent only to the organizer; invalid codes, duplicate users, and joins
+  outside the late window are rejected.
+- [ ] The late-window code is invalidated when the replacement draw closes
+  registration.
 - [ ] Existing participants, pairs, assignments, generation, delivery, and
   confirmations remain unchanged; late participants cannot confirm an old
   assignment they were never sent.
@@ -575,13 +579,13 @@ explicitly confirmed replacement action.
 ## Task 24: Adding localized organizer controls for late enrollment
 
 **Description:** Add a private organizer control to reopen enrollment after a
-fully delivered draw, show the existing invite code only to the organizer, and
+fully delivered draw, show the fresh late-window invite only to the organizer, and
 reuse the confirmed replacement action once late participants have joined.
 
 **Acceptance criteria:**
 - [ ] The late-enrollment action is shown only when the organizer can safely
   open it; unauthorized or stale callbacks do not change state.
-- [ ] Opening it sends the existing invite code only to the organizer and does
+- [ ] Opening it sends the fresh invite code only to the organizer and does
   not automatically reroll.
 - [ ] The organizer can explicitly confirm or cancel the replacement after
   late enrollment; both languages describe the same behavior.
@@ -617,8 +621,8 @@ late registration, the replacement confirmation, and the distinct assignment
 messages for existing participants and the late joiner.
 
 **Acceptance criteria:**
-- [ ] The simulator demonstrates a late participant joining by the existing
-  invite and a complete replacement delivered to everyone.
+- [ ] The simulator demonstrates a late participant joining by the fresh
+  late-window invite and a complete replacement delivered to everyone.
 - [ ] README explains the eligibility, invite-code window, explicit reroll,
   replacement impact, and restart-safe delivery.
 

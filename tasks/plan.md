@@ -150,16 +150,20 @@ pairing foundations: Tasks 14 and 19 -> Tasks 20-25.
 **Status:** Proposed; implement only after this plan extension is approved.
 
 **Overview:** Allow the organizer to reopen registration after a fully
-delivered draw so a missed friend can join privately with the existing invite
-code. Retain the prior draw until the organizer explicitly confirms a complete
-replacement for the expanded roster. Previously assigned participants receive
-a replacement notice; late joiners receive normal first-assignment wording.
+delivered draw so a missed friend can join privately with a fresh invite code
+for that window. Retain the prior draw until the organizer explicitly confirms
+a complete replacement for the expanded roster. Previously assigned
+participants receive a replacement notice; late joiners receive normal
+first-assignment wording.
 
 **Architecture decisions:**
 - Reuse the encrypted `ExchangeState` snapshot and append a
   `LATE_REGISTRATION_OPEN` phase without renumbering existing serialized phases.
-  Persist the same invite code, prior draw, delivery state, and confirmations
-  while late participants are added.
+  Generate a fresh invite code when the organizer opens late registration, and
+  persist it with the prior draw, delivery state, and confirmations while late
+  participants are added. The current implementation does not retain the
+  initial code after the first draw, so late windows must not promise to reuse
+  it.
 - In the late-registration phase, the retained draw assignments cover the
   original roster, which is a subset of the expanded participant roster. Do
   not deliver or expose any assignment to a late participant until the full
@@ -182,7 +186,7 @@ Task 14 complete replacement draws + Task 19 pair semantics
 
 **Task List:**
 - Task 20: Model and persist late registration while retaining the prior draw.
-- Task 21: Reopen enrollment with the existing invite and register late
+- Task 21: Reopen enrollment with a fresh invite and register late
   participants.
 - Task 22: Replace the retained draw for the expanded roster and retry that
   generation safely.
@@ -204,7 +208,7 @@ Task 14 complete replacement draws + Task 19 pair semantics
 | Risk | Impact | Mitigation |
 |---|---|---|
 | Old assignments no longer cover the expanded roster during late enrollment | High | Add phase-specific state validation; allow the retained draw to reference only its original participants, and test encrypted restart recovery. |
-| Reusing the invite code admits anyone who still has it during the late window | Medium | Require an explicit organizer action to open the window, show the code only in the organizer's private chat, and close it when the replacement is confirmed. |
+| Anyone with the fresh late-window code can join before the organizer replaces the draw | Medium | Require an explicit organizer action to open the window, send the code only in the organizer's private chat, persist it across restarts, and invalidate it when the replacement is confirmed. |
 | A late joiner is told their first draw replaces a result they never received | Medium | Send replacement wording to previously assigned participants and first-assignment wording to late joiners. |
 | A failed replacement could mix assignments from two generations | High | Persist the complete replacement before sending and retry only its undelivered recipients. |
 
