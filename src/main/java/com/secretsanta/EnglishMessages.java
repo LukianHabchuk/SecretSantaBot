@@ -137,6 +137,11 @@ final class EnglishMessages {
         m.put(BotMessages.PAIR_PENDING_DRAW_CHECK_FAILED, "❌ Could not check draw status. Please try again later.");
         m.put(BotMessages.RUN_TOO_FEW, "❌ Not enough participants for the draw (at least 2 are needed).");
         m.put(BotMessages.RUN_COMPLETED, "✅ The draw is complete! All participants received their assignments privately.");
+        m.put(
+                BotMessages.RUN_LATE_REGISTRATION,
+                "⚠️ Late registration is open. `/run` will not replace current assignments. "
+                        + "Use the organizer controls to explicitly confirm a replacement draw "
+                        + "after everyone has joined.");
         m.put(BotMessages.RUN_NO_ASSIGNMENT, "❌ No valid assignment was found. Check the pairs for this group.");
         m.put(BotMessages.RUN_FAILED, "❌ Could not safely continue the draw. Do not open a new registration; retry `/run` to resume it.");
         m.put(BotMessages.DRAW_RECEIPT_RECORDED, "Receipt confirmed.");

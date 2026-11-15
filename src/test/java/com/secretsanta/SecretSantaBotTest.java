@@ -1324,6 +1324,42 @@ class SecretSantaBotTest {
     }
 
     @Test
+    void runDuringLateEnrollmentRequiresExplicitReplacementAndKeepsTheCurrentDraw()
+            throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+        String inviteCode = openRegistration(bot, messenger);
+        for (long userId = 201L; userId <= 203L; userId++) {
+            bot.onUpdateReceived(update(
+                    userId, userId, "private", "/join " + inviteCode + " Guest " + userId));
+        }
+        bot.onUpdateReceived(update(100L, 100L, "private", "/run"));
+
+        ExchangeService exchangeService = new ExchangeService(
+                organizerService, new ExchangeStore(dataDirectory, TEST_DATA_KEY));
+        PendingDrawService pendingDrawService = new PendingDrawService(
+                testPendingDrawStore(), exchangeService, organizerService, messenger);
+        pendingDrawService.openLateRegistration(100L);
+        ExchangeState lateRegistration = new ExchangeStore(dataDirectory, TEST_DATA_KEY)
+                .load()
+                .orElseThrow();
+        int messageCountBeforeRun = messenger.sentMessages.size();
+        SecretSantaBot restartedBot = createBot(organizerService, messenger);
+
+        restartedBot.onUpdateReceived(update(100L, 100L, "private", "/run"));
+
+        ExchangeState stateAfterRun = new ExchangeStore(dataDirectory, TEST_DATA_KEY)
+                .load()
+                .orElseThrow();
+        assertEquals(messageCountBeforeRun + 1, messenger.sentMessages.size());
+        assertEquals(ExchangeState.Phase.LATE_REGISTRATION_OPEN, stateAfterRun.phase());
+        assertEquals(lateRegistration.assignments(), stateAfterRun.assignments());
+        assertTrue(messenger.sentMessages.getLast().text().contains("Пізню реєстрацію відкрито"));
+        assertTrue(messenger.sentMessages.getLast().text().contains("підтверди нове жеребкування"));
+    }
+
+    @Test
     void participantCanConfirmReceiptFromTheirPrivateAssignmentMessage() throws Exception {
         OrganizerService organizerService = createService();
         TestTelegramMessenger messenger = new TestTelegramMessenger();

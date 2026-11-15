@@ -155,6 +155,10 @@ final class BotMessages {
     static final String RUN_TOO_FEW = "❌ Замало учасників для розподілу (потрібно мінімум 2).";
     static final String RUN_COMPLETED =
             "✅ Розподіл успішно завершено! Усі учасники отримали свої цілі в особисті чати.";
+    static final String RUN_LATE_REGISTRATION =
+            "⚠️ Пізню реєстрацію відкрито. `/run` не змінює поточні завдання. "
+                    + "Використай меню організатора та підтверди нове жеребкування, "
+                    + "коли всі приєднаються.";
     static final String RUN_NO_ASSIGNMENT =
             "❌ Не вдалося знайти комбінацію. Перевір пари: для цієї групи немає допустимого розподілу.";
     static final String RUN_FAILED =
@@ -273,6 +277,7 @@ final class BotMessages {
             case TOO_FEW_PARTICIPANTS -> RUN_TOO_FEW;
             case PENDING -> openPendingDeliveries(result.failedDeliveries());
             case COMPLETED -> RUN_COMPLETED;
+            case REPLACEMENT_CONFIRMATION_REQUIRED -> RUN_LATE_REGISTRATION;
         };
     }
 
@@ -284,6 +289,8 @@ final class BotMessages {
             case TOO_FEW_PARTICIPANTS -> EnglishMessages.translate(RUN_TOO_FEW);
             case PENDING -> englishPendingDeliveries(result.failedDeliveries());
             case COMPLETED -> EnglishMessages.translate(RUN_COMPLETED);
+            case REPLACEMENT_CONFIRMATION_REQUIRED ->
+                    EnglishMessages.translate(RUN_LATE_REGISTRATION);
         };
     }
 
@@ -292,6 +299,7 @@ final class BotMessages {
             case TOO_FEW_PARTICIPANTS -> RUN_TOO_FEW;
             case PENDING -> openPendingDeliveries(result.failedDeliveries());
             case COMPLETED -> REPLACEMENT_COMPLETED;
+            case REPLACEMENT_CONFIRMATION_REQUIRED -> RUN_LATE_REGISTRATION;
         };
     }
 
@@ -303,6 +311,8 @@ final class BotMessages {
             case TOO_FEW_PARTICIPANTS -> EnglishMessages.translate(RUN_TOO_FEW);
             case PENDING -> englishPendingDeliveries(result.failedDeliveries());
             case COMPLETED -> EnglishMessages.translate(REPLACEMENT_COMPLETED);
+            case REPLACEMENT_CONFIRMATION_REQUIRED ->
+                    EnglishMessages.translate(RUN_LATE_REGISTRATION);
         };
     }
 
@@ -316,6 +326,7 @@ final class BotMessages {
             case TOO_FEW_PARTICIPANTS -> REPLACEMENT_TOO_FEW_CALLBACK;
             case PENDING -> REPLACEMENT_PENDING_CALLBACK;
             case COMPLETED -> REPLACEMENT_COMPLETED_CALLBACK;
+            case REPLACEMENT_CONFIRMATION_REQUIRED -> REPLACEMENT_CONFIRMATION_CALLBACK;
         };
     }
 

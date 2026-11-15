@@ -567,20 +567,23 @@ same-generation retry guarantees.
 draw while late registration is open. Explain that the organizer must use the
 explicitly confirmed replacement action.
 
+**Status:** Complete.
+
 **Acceptance criteria:**
-- [ ] `/run` during late enrollment does not generate or send assignments.
-- [ ] The organizer receives clear English/Ukrainian guidance to confirm the
+- [x] `/run` during late enrollment does not generate or send assignments.
+- [x] The organizer receives clear English/Ukrainian guidance to confirm the
   replacement from the organizer controls.
-- [ ] Existing `/run` behavior for initial draws and pending-delivery retries
+- [x] Existing `/run` behavior for initial draws and pending-delivery retries
   is unchanged.
 
 **Verification:**
-- [ ] `mvn -Dtest=SecretSantaBotTest,EnglishMessagesTest test`
-- [ ] Tests prove the command cannot bypass the confirmation gate.
+- [x] `mvn -Dtest=SecretSantaBotTest,EnglishMessagesTest test`
+- [x] Tests prove the command cannot bypass the confirmation gate.
 
 **Dependencies:** Task 22
 
 **Files likely touched:**
+- `src/main/java/com/secretsanta/PendingDrawService.java`
 - `src/main/java/com/secretsanta/BotCommandController.java`
 - `src/main/java/com/secretsanta/BotMessages.java`
 - `src/main/java/com/secretsanta/EnglishMessages.java`

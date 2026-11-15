@@ -25,4 +25,12 @@ class EnglishMessagesTest {
         assertTrue(EnglishMessages.translate(BotMessages.ORGANIZER_ONLY_ACTION)
                 .contains("organizer"));
     }
+
+    @Test
+    void translatesLateRegistrationRunGuidance() {
+        String message = EnglishMessages.translate(BotMessages.RUN_LATE_REGISTRATION);
+
+        assertTrue(message.contains("Late registration is open"));
+        assertTrue(message.contains("explicitly confirm a replacement draw"));
+    }
 }
