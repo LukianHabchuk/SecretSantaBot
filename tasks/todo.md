@@ -437,3 +437,205 @@ assigned to each other in the draw.
   draw start.
 - [x] README documents the name-edit flow.
 - [x] Full Maven test suite passes in the Java 27 Docker build.
+
+## Phase 7: Late Enrollment and Complete Replacement
+
+The approved specification adds organizer-controlled late enrollment after a
+fully delivered draw. The organizer reuses the current invite code, then
+explicitly confirms a complete replacement draw for the expanded roster.
+Existing participants receive replacement notices; late joiners receive
+first-assignment notices. Do not start these tasks until the Phase 7 plan
+extension in `tasks/plan.md` is approved.
+
+## Task 20: Modeling late registration while retaining the prior draw
+
+**Description:** Add a persisted late-registration phase that keeps the current
+invite code, original assignments, delivery progress, and confirmations valid
+while the participant roster expands. Append the new phase to preserve existing
+encrypted phase ordinals.
+
+**Acceptance criteria:**
+- [ ] Late-registration state retains a fully delivered prior draw and can
+  include participants who are not part of that draw.
+- [ ] State validation rejects assignments, deliveries, or confirmations that
+  reference unknown users and preserves the existing self/pair constraints.
+- [ ] Encrypted save/load round-trips the new phase without changing the
+  interpretation of existing phases.
+
+**Verification:**
+- [ ] `mvn -Dtest=ExchangeStateTest,ExchangeStoreTest test`
+- [ ] Existing snapshots and normal draw states remain readable in regression
+  tests.
+
+**Dependencies:** Completed Task 14; proposed Phase 7 plan approval.
+
+**Files likely touched:**
+- `src/main/java/com/secretsanta/ExchangeState.java`
+- `src/test/java/com/secretsanta/ExchangeStateTest.java`
+- `src/test/java/com/secretsanta/ExchangeStoreTest.java`
+
+**Estimated scope:** Small
+
+## Task 21: Reopening enrollment with the existing invite
+
+**Description:** Add an organizer-authorized transition to late registration
+after a fully delivered draw and allow new identities to join through the
+existing invite/name flow. Preserve the current draw until replacement is
+confirmed.
+
+**Acceptance criteria:**
+- [ ] Only the organizer can open late enrollment, and only after all current
+  assignments are delivered and before cleanup.
+- [ ] The same invite code accepts valid new participants; invalid codes,
+  duplicate users, and joins outside the late window are rejected.
+- [ ] Existing participants, pairs, assignments, generation, delivery, and
+  confirmations remain unchanged; late participants cannot confirm an old
+  assignment they were never sent.
+
+**Verification:**
+- [ ] `mvn -Dtest=ExchangeServiceTest test`
+- [ ] Tests cover restart recovery, authorization, duplicate/out-of-window
+  joins, and retained-draw invariants.
+
+**Dependencies:** Task 20
+
+**Files likely touched:**
+- `src/main/java/com/secretsanta/ExchangeService.java`
+- `src/test/java/com/secretsanta/ExchangeServiceTest.java`
+
+**Estimated scope:** Small
+
+## Task 22: Replacing the draw for the expanded roster
+
+**Description:** Extend the confirmed replacement flow to generate and persist
+a full assignment set for the expanded roster, close late enrollment, and
+deliver to every participant. Preserve the existing pairing constraints and
+same-generation retry guarantees.
+
+**Acceptance criteria:**
+- [ ] Replacement is unavailable until prior delivery is complete and creates
+  a valid one-to-one draw for every current participant.
+- [ ] The complete next generation is persisted before any message; successful
+  replacement closes registration and clears old confirmations.
+- [ ] Existing participants receive replacement wording; late joiners receive
+  first-assignment wording; each sees only their own assignment.
+- [ ] Failures and restarts retry the persisted generation without mixing or
+  redrawing assignments.
+
+**Verification:**
+- [ ] `mvn -Dtest=PendingDrawServiceTest test`
+- [ ] Tests cover private delivery, pairing constraints, persistence failure,
+  partial delivery, and restart retry with a late participant.
+
+**Dependencies:** Task 21
+
+**Files likely touched:**
+- `src/main/java/com/secretsanta/ExchangeService.java`
+- `src/main/java/com/secretsanta/PendingDrawService.java`
+- `src/test/java/com/secretsanta/PendingDrawServiceTest.java`
+
+**Estimated scope:** Medium
+
+## Checkpoint: Late Enrollment Domain and Delivery
+- [ ] Late enrollment survives encrypted restart and retains the old draw.
+- [ ] Confirmed replacement includes the late participant and safely retries.
+- [ ] Focused domain and delivery tests pass.
+- [ ] Human reviews the domain and delivery slice before UI work.
+
+## Task 23: Preventing `/run` from bypassing replacement confirmation
+
+**Description:** Keep the existing `/run` command from silently replacing a
+draw while late registration is open. Explain that the organizer must use the
+explicitly confirmed replacement action.
+
+**Acceptance criteria:**
+- [ ] `/run` during late enrollment does not generate or send assignments.
+- [ ] The organizer receives clear English/Ukrainian guidance to confirm the
+  replacement from the organizer controls.
+- [ ] Existing `/run` behavior for initial draws and pending-delivery retries
+  is unchanged.
+
+**Verification:**
+- [ ] `mvn -Dtest=SecretSantaBotTest,EnglishMessagesTest test`
+- [ ] Tests prove the command cannot bypass the confirmation gate.
+
+**Dependencies:** Task 22
+
+**Files likely touched:**
+- `src/main/java/com/secretsanta/BotCommandController.java`
+- `src/main/java/com/secretsanta/BotMessages.java`
+- `src/main/java/com/secretsanta/EnglishMessages.java`
+- `src/test/java/com/secretsanta/SecretSantaBotTest.java`
+- `src/test/java/com/secretsanta/EnglishMessagesTest.java`
+
+**Estimated scope:** Medium
+
+## Task 24: Adding localized organizer controls for late enrollment
+
+**Description:** Add a private organizer control to reopen enrollment after a
+fully delivered draw, show the existing invite code only to the organizer, and
+reuse the confirmed replacement action once late participants have joined.
+
+**Acceptance criteria:**
+- [ ] The late-enrollment action is shown only when the organizer can safely
+  open it; unauthorized or stale callbacks do not change state.
+- [ ] Opening it sends the existing invite code only to the organizer and does
+  not automatically reroll.
+- [ ] The organizer can explicitly confirm or cancel the replacement after
+  late enrollment; both languages describe the same behavior.
+- [ ] The participant's existing private signup flow works during late
+  enrollment without reopening post-draw name editing.
+
+**Verification:**
+- [ ] `mvn -Dtest=SecretSantaBotTest,EnglishMessagesTest test`
+- [ ] Bot tests cover organizer authorization, private invite delivery,
+  registration timing, cancellation, and absence of an automatic reroll.
+
+**Dependencies:** Tasks 21, 22, and 23
+
+**Files likely touched:**
+- `src/main/java/com/secretsanta/BotButtons.java`
+- `src/main/java/com/secretsanta/BotButtonController.java`
+- `src/main/java/com/secretsanta/BotMessages.java`
+- `src/main/java/com/secretsanta/EnglishMessages.java`
+- `src/test/java/com/secretsanta/SecretSantaBotTest.java`
+
+**Estimated scope:** Medium
+
+## Checkpoint: Organizer Flow
+- [ ] Late enrollment and explicit replacement are available through private
+  organizer buttons in both languages.
+- [ ] Unauthorized, stale, and premature actions leave state unchanged.
+- [ ] Human reviews the organizer flow before final documentation.
+
+## Task 25: Verifying and documenting late enrollment
+
+**Description:** Extend the offline simulator walkthrough and README to cover
+late registration, the replacement confirmation, and the distinct assignment
+messages for existing participants and the late joiner.
+
+**Acceptance criteria:**
+- [ ] The simulator demonstrates a late participant joining by the existing
+  invite and a complete replacement delivered to everyone.
+- [ ] README explains the eligibility, invite-code window, explicit reroll,
+  replacement impact, and restart-safe delivery.
+
+**Verification:**
+- [ ] `mvn -Dtest=OfflineBotSimulatorTest test`
+- [ ] `mvn clean test`
+- [ ] `mvn clean package` on JDK 27.
+
+**Dependencies:** Task 24
+
+**Files likely touched:**
+- `src/main/java/com/secretsanta/OfflineBotSimulator.java`
+- `src/test/java/com/secretsanta/OfflineBotSimulatorTest.java`
+- `README.md`
+
+**Estimated scope:** Small
+
+## Checkpoint: Late Enrollment Complete
+- [ ] All Phase 7 acceptance criteria pass.
+- [ ] Offline simulator and README reflect the approved specification.
+- [ ] Full Maven tests and package build pass on JDK 27.
+- [ ] Human approves the implementation handoff.

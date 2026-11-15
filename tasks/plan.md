@@ -1,8 +1,8 @@
 # Implementation Plan: Private Secret Santa Exchange
 
 ## Status
-Approved implementation plan for the revised specification and pre-draw name
-editing. Tasks 16-18 are complete; the separate live test-bot walkthrough
+Previously approved phases remain as recorded. The late-enrollment extension
+below is proposed and awaits human review. The separate live test-bot walkthrough
 remains pending test-bot access.
 
 ## Overview
@@ -85,6 +85,9 @@ Completed Java/Maven, assignment, organizer, and delivery foundations (Tasks 1-6
 The name-edit branch depends on existing onboarding and persistence:
 Task 8 -> Task 16; Tasks 9 and 16 -> Task 17 -> Task 18.
 
+The late-enrollment extension depends on the completed replacement-draw and
+pairing foundations: Tasks 14 and 19 -> Tasks 20-25.
+
 ## Task List
 
 ### Phase 1: Durable Exchange and Onboarding
@@ -141,6 +144,72 @@ Task 8 -> Task 16; Tasks 9 and 16 -> Task 17 -> Task 18.
 ### Phase 6: Pair Meaning
 - Task 19: Explain to participants that a pair only excludes them from drawing
   each other.
+
+### Phase 7: Late Enrollment and Complete Replacement
+
+**Status:** Proposed; implement only after this plan extension is approved.
+
+**Overview:** Allow the organizer to reopen registration after a fully
+delivered draw so a missed friend can join privately with the existing invite
+code. Retain the prior draw until the organizer explicitly confirms a complete
+replacement for the expanded roster. Previously assigned participants receive
+a replacement notice; late joiners receive normal first-assignment wording.
+
+**Architecture decisions:**
+- Reuse the encrypted `ExchangeState` snapshot and append a
+  `LATE_REGISTRATION_OPEN` phase without renumbering existing serialized phases.
+  Persist the same invite code, prior draw, delivery state, and confirmations
+  while late participants are added.
+- In the late-registration phase, the retained draw assignments cover the
+  original roster, which is a subset of the expanded participant roster. Do
+  not deliver or expose any assignment to a late participant until the full
+  replacement is persisted.
+- Reuse the existing assignment generator, explicit replacement confirmation,
+  per-recipient private delivery, and same-generation retry behavior. Preserve
+  accepted pairs; do not add a dependency or external service.
+
+**Dependency graph:**
+
+```text
+Task 14 complete replacement draws + Task 19 pair semantics
+  -> 20 persisted late-registration phase
+  -> 21 organizer-controlled late enrollment
+  -> 22 replacement draw for the expanded roster
+  -> 23 guard the legacy /run command
+  -> 24 organizer buttons and localized flow
+  -> 25 simulator and operating documentation
+```
+
+**Task List:**
+- Task 20: Model and persist late registration while retaining the prior draw.
+- Task 21: Reopen enrollment with the existing invite and register late
+  participants.
+- Task 22: Replace the retained draw for the expanded roster and retry that
+  generation safely.
+- Task 23: Prevent `/run` from bypassing the explicit replacement confirmation.
+- Task 24: Add localized organizer controls for late enrollment and redraw.
+- Task 25: Verify the late-join flow in the offline simulator and document it.
+
+**Checkpoints:**
+- After Tasks 20-21: encrypted state round-trips; opening and joining preserve
+  the old draw; prior delivery and confirmations remain valid.
+- After Tasks 22-24: an organizer-confirmed replacement includes late
+  participants, sends each recipient only their own assignment, and resumes the
+  same generation after failure; no command or stale callback bypasses
+  confirmation.
+- After Task 25: simulator and README cover the complete flow; the full Maven
+  suite and package build pass.
+
+**Risks and mitigations:**
+| Risk | Impact | Mitigation |
+|---|---|---|
+| Old assignments no longer cover the expanded roster during late enrollment | High | Add phase-specific state validation; allow the retained draw to reference only its original participants, and test encrypted restart recovery. |
+| Reusing the invite code admits anyone who still has it during the late window | Medium | Require an explicit organizer action to open the window, show the code only in the organizer's private chat, and close it when the replacement is confirmed. |
+| A late joiner is told their first draw replaces a result they never received | Medium | Send replacement wording to previously assigned participants and first-assignment wording to late joiners. |
+| A failed replacement could mix assignments from two generations | High | Persist the complete replacement before sending and retry only its undelivered recipients. |
+
+**Open Questions:** None; the late-enrollment, confirmation, and message
+behavior is specified.
 
 ### Checkpoint: Complete
 - All approved specification criteria have tests or a documented manual check.
