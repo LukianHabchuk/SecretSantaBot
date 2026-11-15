@@ -68,6 +68,12 @@ final class PendingDrawService {
         }
     }
 
+    String openLateRegistration(long organizerId) throws IOException {
+        try (PendingDrawStore.LockHandle ignored = store.acquireDrawLock()) {
+            return exchangeService.openLateRegistration(organizerId);
+        }
+    }
+
     boolean hasPendingDraw() throws IOException {
         try (PendingDrawStore.LockHandle ignored = store.acquireDrawLock()) {
             return store.load().isPresent() || exchangeService.hasActiveDraw();

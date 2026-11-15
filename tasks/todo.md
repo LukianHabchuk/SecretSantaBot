@@ -483,33 +483,40 @@ encrypted phase ordinals.
 **Description:** Add an organizer-authorized transition to late registration
 after a fully delivered draw. Generate and persist a fresh invite code for the
 late window, send it only to the organizer, and allow new identities to join
-through the existing private signup/name flow. Preserve the current draw until
-replacement is confirmed.
+through the existing private signup/name flow. Serialize the transition through
+the existing draw lock and preserve the current draw until replacement is
+confirmed.
+
+**Status:** Complete.
 
 **Acceptance criteria:**
-- [ ] Only the organizer can open late enrollment, and only after all current
+- [x] Only the organizer can open late enrollment, and only after all current
   assignments are delivered and before cleanup.
-- [ ] A fresh invite code is generated for each late window, survives restart,
+- [x] A fresh invite code is generated for each late window, survives restart,
   and is sent only to the organizer; invalid codes, duplicate users, and joins
   outside the late window are rejected.
-- [ ] The late-window code is invalidated when the replacement draw closes
+- [x] The late-window code is invalidated when the replacement draw closes
   registration.
-- [ ] Existing participants, pairs, assignments, generation, delivery, and
+- [x] Existing participants, pairs, assignments, generation, delivery, and
   confirmations remain unchanged; late participants cannot confirm an old
   assignment they were never sent.
+- [x] A failed state write leaves the completed draw unchanged and closes the
+  unpersisted in-memory invite.
 
 **Verification:**
-- [ ] `mvn -Dtest=ExchangeServiceTest test`
-- [ ] Tests cover restart recovery, authorization, duplicate/out-of-window
-  joins, and retained-draw invariants.
+- [x] `mvn -Dtest=ExchangeServiceTest,PendingDrawServiceTest test`
+- [x] Tests cover restart recovery, authorization, duplicate/out-of-window
+  joins, lock-wrapped reopening, write failures, and retained-draw invariants.
 
 **Dependencies:** Task 20
 
 **Files likely touched:**
 - `src/main/java/com/secretsanta/ExchangeService.java`
+- `src/main/java/com/secretsanta/PendingDrawService.java`
 - `src/test/java/com/secretsanta/ExchangeServiceTest.java`
+- `src/test/java/com/secretsanta/PendingDrawServiceTest.java`
 
-**Estimated scope:** Small
+**Estimated scope:** Medium
 
 ## Task 22: Replacing the draw for the expanded roster
 

@@ -308,6 +308,27 @@ class PendingDrawServiceTest {
     }
 
     @Test
+    void opensLateRegistrationThroughTheDrawLockService() throws Exception {
+        OrganizerService organizerService = createOrganizerService();
+        ExchangeService exchangeService = createExchangeWithThreeParticipants(organizerService);
+        PendingDrawService service = new PendingDrawService(
+                new PendingDrawStore(dataDirectory, KEY),
+                exchangeService,
+                organizerService,
+                new RecordingMessenger(null));
+        assertEquals(PendingDrawService.Status.COMPLETED, service.run().status());
+        ExchangeState previousDraw = exchangeService.state();
+
+        String lateInviteCode = service.openLateRegistration(100L);
+
+        assertEquals(ExchangeState.Phase.LATE_REGISTRATION_OPEN, exchangeService.state().phase());
+        assertEquals(lateInviteCode, exchangeService.state().inviteCode());
+        assertEquals(previousDraw.assignments(), exchangeService.state().assignments());
+        assertEquals(previousDraw.deliveredUserIds(), exchangeService.state().deliveredUserIds());
+        assertTrue(service.hasPendingDraw());
+    }
+
+    @Test
     void replacementDrawIncrementsGenerationAndClearsPreviousConfirmations() throws Exception {
         OrganizerService organizerService = createOrganizerService();
         ExchangeService exchangeService = createExchangeWithThreeParticipants(organizerService);

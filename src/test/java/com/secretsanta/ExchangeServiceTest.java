@@ -93,6 +93,147 @@ class ExchangeServiceTest {
     }
 
     @Test
+    void lateRegistrationCannotOpenBeforeTheDrawIsFullyDelivered() throws Exception {
+        OrganizerService organizerService = createOrganizerService();
+        ExchangeService exchange = createExchangeWithParticipants(organizerService);
+        assertThrows(
+                IllegalStateException.class,
+                () -> exchange.openLateRegistration(100L));
+
+        exchange.beginDraw(List.of(
+                new ExchangeState.Assignment(100L, 201L),
+                new ExchangeState.Assignment(201L, 202L),
+                new ExchangeState.Assignment(202L, 203L),
+                new ExchangeState.Assignment(203L, 204L),
+                new ExchangeState.Assignment(204L, 100L)));
+        exchange.markAssignmentDelivered(100L);
+        ExchangeState partiallyDelivered = exchange.state();
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> exchange.openLateRegistration(100L));
+        assertEquals(partiallyDelivered, exchange.state());
+    }
+
+    @Test
+    void lateRegistrationUsesFreshPrivateWindowCodeAndRetainsDrawAcrossRestart()
+            throws Exception {
+        OrganizerService organizerService = createOrganizerService();
+        ExchangeService exchange = createExchangeWithParticipants(organizerService);
+        String initialInviteCode = exchange.state().inviteCode();
+        completeFivePersonDraw(exchange);
+        exchange.confirmReceipt(100L, exchange.state().drawGeneration());
+        ExchangeState previousDraw = exchange.state();
+
+        assertThrows(
+                SecurityException.class,
+                () -> exchange.openLateRegistration(201L));
+        assertEquals(previousDraw, exchange.state());
+
+        String lateInviteCode = exchange.openLateRegistration(100L);
+        ExchangeState lateRegistration = exchange.state();
+        assertEquals(ExchangeState.Phase.LATE_REGISTRATION_OPEN, lateRegistration.phase());
+        assertFalse(lateInviteCode.isBlank());
+        assertFalse(lateInviteCode.equals(initialInviteCode));
+        assertEquals(lateInviteCode, lateRegistration.inviteCode());
+        assertEquals(previousDraw.assignments(), lateRegistration.assignments());
+        assertEquals(previousDraw.deliveredUserIds(), lateRegistration.deliveredUserIds());
+        assertEquals(previousDraw.confirmedUserIds(), lateRegistration.confirmedUserIds());
+        assertEquals(previousDraw.drawGeneration(), lateRegistration.drawGeneration());
+        assertTrue(exchange.hasActiveDraw());
+        assertEquals(ExchangeService.InviteStatus.VALID, exchange.inviteStatus(lateInviteCode));
+        assertEquals(ExchangeService.InviteStatus.INVALID, exchange.inviteStatus(initialInviteCode));
+        assertEquals(lateInviteCode, exchange.openLateRegistration(100L));
+
+        OrganizerService restartedOrganizerService =
+                new OrganizerService(new OrganizerStore(dataDirectory), "setup-code");
+        ExchangeService restartedExchange = new ExchangeService(
+                restartedOrganizerService, new ExchangeStore(dataDirectory, TEST_DATA_KEY));
+        assertEquals(ExchangeService.InviteStatus.VALID, restartedExchange.inviteStatus(lateInviteCode));
+        assertEquals(
+                ExchangeService.RegistrationResult.REGISTERED,
+                restartedExchange.register(301L, lateInviteCode, "Late friend"));
+        assertEquals(
+                ExchangeState.Phase.LATE_REGISTRATION_OPEN,
+                restartedExchange.state().phase());
+        assertEquals(6, restartedExchange.state().participants().size());
+    }
+
+    @Test
+    void lateInviteJoinPreservesOldDrawAndCannotConfirmAnOldAssignment() throws Exception {
+        OrganizerService organizerService = createOrganizerService();
+        ExchangeService exchange = createCompletedDraw(organizerService);
+        ExchangeState previousDraw = exchange.state();
+        String lateInviteCode = exchange.openLateRegistration(100L);
+
+        assertEquals(
+                ExchangeService.RegistrationResult.REGISTERED,
+                exchange.register(301L, lateInviteCode, "Late friend"));
+        ExchangeState updatedRoster = exchange.state();
+        assertEquals(6, updatedRoster.participants().size());
+        assertEquals(
+                ExchangeService.RegistrationResult.INVALID_INVITE,
+                exchange.register(302L, "invalid-code", "Another friend"));
+        assertEquals(
+                ExchangeService.RegistrationResult.ALREADY_REGISTERED,
+                exchange.register(301L, lateInviteCode, "Late friend"));
+        assertEquals(previousDraw.assignments(), updatedRoster.assignments());
+        assertEquals(previousDraw.deliveredUserIds(), updatedRoster.deliveredUserIds());
+        assertEquals(previousDraw.confirmedUserIds(), updatedRoster.confirmedUserIds());
+        assertEquals(previousDraw.drawGeneration(), updatedRoster.drawGeneration());
+        assertTrue(updatedRoster.participants().stream()
+                .filter(participant -> participant.userId() == 301L)
+                .allMatch(participant -> participant.partnerId() == null));
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> exchange.confirmReceipt(301L, previousDraw.drawGeneration()));
+    }
+
+    @Test
+    void replacementDrawClosesTheLateRegistrationInvite() throws Exception {
+        OrganizerService organizerService = createOrganizerService();
+        ExchangeService exchange = createCompletedDraw(organizerService);
+        String lateInviteCode = exchange.openLateRegistration(100L);
+
+        exchange.replaceDraw(List.of(
+                new ExchangeState.Assignment(100L, 202L),
+                new ExchangeState.Assignment(201L, 203L),
+                new ExchangeState.Assignment(202L, 204L),
+                new ExchangeState.Assignment(203L, 100L),
+                new ExchangeState.Assignment(204L, 201L)));
+
+        assertEquals(ExchangeState.Phase.DELIVERING, exchange.state().phase());
+        assertEquals(ExchangeService.InviteStatus.CLOSED, exchange.inviteStatus(lateInviteCode));
+        assertEquals(
+                ExchangeService.RegistrationResult.REGISTRATION_CLOSED,
+                exchange.register(301L, lateInviteCode, "Late friend"));
+        assertFalse(organizerService.isRegistrationOpen());
+    }
+
+    @Test
+    void failedLateRegistrationWriteLeavesCompletedDrawAndInviteClosed() throws Exception {
+        OrganizerService organizerService = createOrganizerService();
+        ExchangeService workingExchange = createCompletedDraw(organizerService);
+        ExchangeState completedDraw = workingExchange.state();
+        ExchangeService failingExchange = new ExchangeService(
+                organizerService,
+                new ExchangeStore(
+                        dataDirectory,
+                        TEST_DATA_KEY,
+                        (source, target) -> {
+                            throw new IOException("Simulated late-registration write failure.");
+                        }));
+
+        assertThrows(
+                IOException.class,
+                () -> failingExchange.openLateRegistration(100L));
+
+        assertEquals(completedDraw, failingExchange.state());
+        assertFalse(organizerService.isRegistrationOpen());
+    }
+
+    @Test
     void failedRegistrationWriteDoesNotChangeTheInMemoryOrPersistedRoster()
             throws Exception {
         OrganizerService organizerService = createOrganizerService();
@@ -454,6 +595,11 @@ class ExchangeServiceTest {
     private ExchangeService createCompletedDraw(OrganizerService organizerService)
             throws Exception {
         ExchangeService exchange = createExchangeWithParticipants(organizerService);
+        completeFivePersonDraw(exchange);
+        return exchange;
+    }
+
+    private static void completeFivePersonDraw(ExchangeService exchange) throws Exception {
         exchange.beginDraw(List.of(
                 new ExchangeState.Assignment(100L, 201L),
                 new ExchangeState.Assignment(201L, 202L),
@@ -463,7 +609,6 @@ class ExchangeServiceTest {
         for (long userId : List.of(100L, 201L, 202L, 203L, 204L)) {
             exchange.markAssignmentDelivered(userId);
         }
-        return exchange;
     }
 
     private OrganizerService createOrganizerService() throws Exception {

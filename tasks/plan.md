@@ -164,6 +164,10 @@ first-assignment wording.
   participants are added. The current implementation does not retain the
   initial code after the first draw, so late windows must not promise to reuse
   it.
+- Reopen late enrollment through `PendingDrawService` while holding the
+  existing draw lock, then persist the phase and invite through
+  `ExchangeService`. If persistence fails, close the in-memory invite and leave
+  the completed draw unchanged.
 - In the late-registration phase, the retained draw assignments cover the
   original roster, which is a subset of the expanded participant roster. Do
   not deliver or expose any assignment to a late participant until the full

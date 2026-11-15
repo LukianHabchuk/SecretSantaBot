@@ -119,7 +119,8 @@ final class ExchangeService {
         if (userId <= 0) {
             throw new IllegalArgumentException("Telegram user ID must be positive.");
         }
-        if (state.phase() != ExchangeState.Phase.REGISTRATION_OPEN) {
+        if (state.phase() != ExchangeState.Phase.REGISTRATION_OPEN
+                && state.phase() != ExchangeState.Phase.LATE_REGISTRATION_OPEN) {
             return RegistrationResult.REGISTRATION_CLOSED;
         }
         if (!matchesInviteCode(state.inviteCode(), inviteCode)) {
@@ -197,7 +198,8 @@ final class ExchangeService {
     }
 
     synchronized InviteStatus inviteStatus(String inviteCode) {
-        if (state.phase() != ExchangeState.Phase.REGISTRATION_OPEN) {
+        if (state.phase() != ExchangeState.Phase.REGISTRATION_OPEN
+                && state.phase() != ExchangeState.Phase.LATE_REGISTRATION_OPEN) {
             return InviteStatus.CLOSED;
         }
         return matchesInviteCode(state.inviteCode(), inviteCode)
@@ -378,13 +380,54 @@ final class ExchangeService {
                 assignments,
                 Set.of(),
                 Set.of()));
+        organizerService.closeRegistration();
+    }
+
+    synchronized String openLateRegistration(long organizerId) throws IOException {
+        if (!organizerService.isOrganizer(organizerId)) {
+            throw new SecurityException("Only the organizer can open late registration.");
+        }
+        if (state.phase() == ExchangeState.Phase.LATE_REGISTRATION_OPEN) {
+            return state.inviteCode();
+        }
+        if (!canOpenLateRegistration()) {
+            throw new IllegalStateException(
+                    "Late registration requires a fully delivered draw.");
+        }
+
+        String inviteCode = organizerService.openRegistration(organizerId);
+        ExchangeState nextState = new ExchangeState(
+                ExchangeState.Phase.LATE_REGISTRATION_OPEN,
+                inviteCode,
+                state.participants(),
+                List.of(),
+                state.drawGeneration(),
+                state.assignments(),
+                state.deliveredUserIds(),
+                state.confirmedUserIds());
+        try {
+            persist(nextState);
+        } catch (IOException exception) {
+            organizerService.closeRegistration();
+            throw exception;
+        }
+        return inviteCode;
+    }
+
+    synchronized boolean canOpenLateRegistration() {
+        Set<Long> giverIds = state.assignments().stream()
+                .map(ExchangeState.Assignment::giverId)
+                .collect(java.util.stream.Collectors.toSet());
+        return state.phase() == ExchangeState.Phase.AWAITING_CONFIRMATIONS
+                && state.deliveredUserIds().equals(giverIds);
     }
 
     synchronized boolean canReplaceDraw() {
         Set<Long> giverIds = state.assignments().stream()
                 .map(ExchangeState.Assignment::giverId)
                 .collect(java.util.stream.Collectors.toSet());
-        return state.phase() == ExchangeState.Phase.AWAITING_CONFIRMATIONS
+        return (state.phase() == ExchangeState.Phase.AWAITING_CONFIRMATIONS
+                        || state.phase() == ExchangeState.Phase.LATE_REGISTRATION_OPEN)
                 && state.deliveredUserIds().equals(giverIds);
     }
 
@@ -419,11 +462,17 @@ final class ExchangeService {
 
     synchronized boolean confirmReceipt(long participantId, long drawGeneration)
             throws IOException {
-        if (state.phase() != ExchangeState.Phase.AWAITING_CONFIRMATIONS
+        if ((state.phase() != ExchangeState.Phase.AWAITING_CONFIRMATIONS
+                        && state.phase() != ExchangeState.Phase.LATE_REGISTRATION_OPEN)
                 || state.drawGeneration() != drawGeneration) {
             throw new IllegalStateException("Receipt confirmation is not available for this draw.");
         }
         requireRegisteredParticipant(participantId);
+        if (state.assignments().stream().noneMatch(
+                assignment -> assignment.giverId() == participantId)) {
+            throw new IllegalStateException(
+                    "Only participants assigned in the current draw can confirm receipt.");
+        }
         if (state.confirmedUserIds().contains(participantId)) {
             return false;
         }
@@ -432,7 +481,7 @@ final class ExchangeService {
         confirmedUserIds.add(participantId);
         persist(new ExchangeState(
                 state.phase(),
-                null,
+                state.inviteCode(),
                 state.participants(),
                 List.of(),
                 state.drawGeneration(),
@@ -472,7 +521,8 @@ final class ExchangeService {
 
     synchronized boolean hasActiveDraw() {
         return state.phase() == ExchangeState.Phase.DELIVERING
-                || state.phase() == ExchangeState.Phase.AWAITING_CONFIRMATIONS;
+                || state.phase() == ExchangeState.Phase.AWAITING_CONFIRMATIONS
+                || state.phase() == ExchangeState.Phase.LATE_REGISTRATION_OPEN;
     }
 
     synchronized void migrateLegacyDraw(PendingDrawStore.PendingDraw legacyDraw)
