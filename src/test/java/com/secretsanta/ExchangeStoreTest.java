@@ -84,6 +84,31 @@ class ExchangeStoreTest {
     }
 
     @Test
+    void encryptsAndReloadsLateRegistrationWithThePreviousDraw() throws Exception {
+        ExchangeStore store = new ExchangeStore(dataDirectory, KEY);
+        ExchangeState state = new ExchangeState(
+                ExchangeState.Phase.LATE_REGISTRATION_OPEN,
+                "existing-invite",
+                List.of(
+                        new ExchangeState.Participant(101L, "Organizer", null),
+                        new ExchangeState.Participant(102L, "Alex", null),
+                        new ExchangeState.Participant(103L, "Sam", null),
+                        new ExchangeState.Participant(104L, "Late friend", null)),
+                List.of(),
+                1,
+                List.of(
+                        new ExchangeState.Assignment(101L, 102L),
+                        new ExchangeState.Assignment(102L, 103L),
+                        new ExchangeState.Assignment(103L, 101L)),
+                Set.of(101L, 102L, 103L),
+                Set.of(101L));
+
+        store.save(state);
+
+        assertEquals(state, store.load().orElseThrow());
+    }
+
+    @Test
     void usesFreshEncryptionNonceForEverySave() throws Exception {
         ExchangeStore store = new ExchangeStore(dataDirectory, KEY);
         ExchangeState state = sampleState();

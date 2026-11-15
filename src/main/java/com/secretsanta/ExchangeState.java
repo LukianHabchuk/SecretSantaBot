@@ -25,7 +25,8 @@ record ExchangeState(
         REGISTRATION_OPEN,
         DELIVERING,
         AWAITING_CONFIRMATIONS,
-        REGISTRATION_CLOSED
+        REGISTRATION_CLOSED,
+        LATE_REGISTRATION_OPEN
     }
 
     record Participant(long userId, String name, Long partnerId) {
@@ -78,7 +79,8 @@ record ExchangeState(
                 deliveredUserIds, "Delivery progress is required."));
         confirmedUserIds = Set.copyOf(Objects.requireNonNull(
                 confirmedUserIds, "Receipt confirmations are required."));
-        if (phase == Phase.REGISTRATION_OPEN && inviteCode != null) {
+        if ((phase == Phase.REGISTRATION_OPEN || phase == Phase.LATE_REGISTRATION_OPEN)
+                && inviteCode != null) {
             inviteCode = inviteCode.strip();
         }
 
@@ -213,10 +215,21 @@ record ExchangeState(
             return;
         }
 
-        if (inviteCode != null || drawGeneration < 1 || !pairRequests.isEmpty()) {
+        boolean lateRegistration = phase == Phase.LATE_REGISTRATION_OPEN;
+        if (lateRegistration) {
+            if (inviteCode == null
+                    || inviteCode.isBlank()
+                    || inviteCode.codePointCount(0, inviteCode.length())
+                            > MAX_INVITE_CODE_CODE_POINTS
+                    || inviteCode.codePoints().anyMatch(Character::isISOControl)
+                    || drawGeneration < 1
+                    || !pairRequests.isEmpty()) {
+                throw new IllegalArgumentException("Late registration state is invalid.");
+            }
+        } else if (inviteCode != null || drawGeneration < 1 || !pairRequests.isEmpty()) {
             throw new IllegalArgumentException("Draw state is invalid.");
         }
-        validateAssignments(assignments, participantsById);
+        validateAssignments(assignments, participantsById, !lateRegistration);
 
         Set<Long> giverIds = assignments.stream()
                 .map(Assignment::giverId)
@@ -226,6 +239,10 @@ record ExchangeState(
                 || !deliveredUserIds.containsAll(confirmedUserIds)) {
             throw new IllegalArgumentException("Draw delivery or confirmation state is invalid.");
         }
+        if (lateRegistration && !deliveredUserIds.equals(giverIds)) {
+            throw new IllegalArgumentException(
+                    "Late registration requires the previous draw to be fully delivered.");
+        }
         if (phase == Phase.AWAITING_CONFIRMATIONS && !deliveredUserIds.equals(giverIds)) {
             throw new IllegalArgumentException(
                     "Confirmations cannot be awaited before all assignments are delivered.");
@@ -233,8 +250,12 @@ record ExchangeState(
     }
 
     private static void validateAssignments(
-            List<Assignment> assignments, Map<Long, Participant> participantsById) {
-        if (participantsById.size() < 2 || assignments.size() != participantsById.size()) {
+            List<Assignment> assignments,
+            Map<Long, Participant> participantsById,
+            boolean requireEveryParticipant) {
+        if (participantsById.size() < 2
+                || assignments.size() < 2
+                || (requireEveryParticipant && assignments.size() != participantsById.size())) {
             throw new IllegalArgumentException("Draw assignments are incomplete.");
         }
 
@@ -254,8 +275,8 @@ record ExchangeState(
                 throw new IllegalArgumentException("Draw assignments are invalid.");
             }
         }
-        if (!giverIds.equals(participantsById.keySet())
-                || !receiverIds.equals(participantsById.keySet())) {
+        if (!giverIds.equals(receiverIds)
+                || (requireEveryParticipant && !giverIds.equals(participantsById.keySet()))) {
             throw new IllegalArgumentException("Draw assignments are incomplete.");
         }
     }

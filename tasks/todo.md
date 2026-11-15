@@ -454,17 +454,19 @@ invite code, original assignments, delivery progress, and confirmations valid
 while the participant roster expands. Append the new phase to preserve existing
 encrypted phase ordinals.
 
+**Status:** Complete.
+
 **Acceptance criteria:**
-- [ ] Late-registration state retains a fully delivered prior draw and can
+- [x] Late-registration state retains a fully delivered prior draw and can
   include participants who are not part of that draw.
-- [ ] State validation rejects assignments, deliveries, or confirmations that
+- [x] State validation rejects assignments, deliveries, or confirmations that
   reference unknown users and preserves the existing self/pair constraints.
-- [ ] Encrypted save/load round-trips the new phase without changing the
+- [x] Encrypted save/load round-trips the new phase without changing the
   interpretation of existing phases.
 
 **Verification:**
-- [ ] `mvn -Dtest=ExchangeStateTest,ExchangeStoreTest test`
-- [ ] Existing snapshots and normal draw states remain readable in regression
+- [x] `mvn -Dtest=ExchangeStateTest,ExchangeStoreTest test`
+- [x] Existing snapshots and normal draw states remain readable in regression
   tests.
 
 **Dependencies:** Completed Task 14; proposed Phase 7 plan approval.
