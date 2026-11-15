@@ -171,6 +171,10 @@ final class BotMessages {
             "Підтвердження доступне лише учасникам поточного розподілу.";
     static final String DRAW_RECEIPT_FAILED = "Не вдалося зберегти підтвердження.";
     static final String DRAW_STATUS_CALLBACK = "Статус обміну.";
+    static final String LATE_REGISTRATION_UNAVAILABLE_CALLBACK =
+            "Пізню реєстрацію можна відкрити лише після повної доставки поточного розподілу.";
+    static final String LATE_REGISTRATION_UNAVAILABLE =
+            "❌ Пізню реєстрацію можна відкрити лише після повної доставки поточного розподілу.";
     static final String REPLACEMENT_CONFIRMATION =
             "Провести нове жеребкування? Поточні завдання буде замінено для всіх учасників.";
     static final String REPLACEMENT_CONFIRMATION_CALLBACK =

@@ -2,8 +2,8 @@
 
 ## Status
 Previously approved phases remain as recorded. The late-enrollment extension
-below is proposed and awaits human review. The separate live test-bot walkthrough
-remains pending test-bot access.
+below is approved. The separate live test-bot walkthrough remains pending
+test-bot access.
 
 ## Overview
 Extend the existing Java 27 Telegram bot from transient registration and
@@ -147,7 +147,7 @@ pairing foundations: Tasks 14 and 19 -> Tasks 20-25.
 
 ### Phase 7: Late Enrollment and Complete Replacement
 
-**Status:** Proposed; implement only after this plan extension is approved.
+**Status:** Approved.
 
 **Overview:** Allow the organizer to reopen registration after a fully
 delivered draw so a missed friend can join privately with a fresh invite code

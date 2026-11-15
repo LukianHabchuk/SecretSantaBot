@@ -444,8 +444,8 @@ The approved specification adds organizer-controlled late enrollment after a
 fully delivered draw. The organizer opens the window to generate a fresh invite
 code, then explicitly confirms a complete replacement draw for the expanded roster.
 Existing participants receive replacement notices; late joiners receive
-first-assignment notices. Do not start these tasks until the Phase 7 plan
-extension in `tasks/plan.md` is approved.
+first-assignment notices. The Phase 7 plan extension in `tasks/plan.md` is
+approved.
 
 ## Task 20: Modeling late registration while retaining the prior draw
 
@@ -599,18 +599,19 @@ fully delivered draw, show the fresh late-window invite only to the organizer, a
 reuse the confirmed replacement action once late participants have joined.
 
 **Acceptance criteria:**
-- [ ] The late-enrollment action is shown only when the organizer can safely
+- [x] The late-enrollment action is shown only when the organizer can safely
   open it; unauthorized or stale callbacks do not change state.
-- [ ] Opening it sends the fresh invite code only to the organizer and does
+- [x] Opening it sends the fresh invite code only to the organizer and does
   not automatically reroll.
-- [ ] The organizer can explicitly confirm or cancel the replacement after
+- [x] The organizer can explicitly confirm or cancel the replacement after
   late enrollment; both languages describe the same behavior.
-- [ ] The participant's existing private signup flow works during late
+- [x] The participant's existing private signup flow works during late
   enrollment without reopening post-draw name editing.
 
 **Verification:**
-- [ ] `mvn -Dtest=SecretSantaBotTest,EnglishMessagesTest test`
-- [ ] Bot tests cover organizer authorization, private invite delivery,
+- [x] `mvn -Dtest=SecretSantaBotTest,BotMessagesLocalizationTest,EnglishMessagesTest test`
+- [x] Full Maven test suite passes on Java 27.
+- [x] Bot tests cover organizer authorization, private invite delivery,
   registration timing, cancellation, and absence of an automatic reroll.
 
 **Dependencies:** Tasks 21, 22, and 23

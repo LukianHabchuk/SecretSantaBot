@@ -150,6 +150,12 @@ final class EnglishMessages {
         m.put(BotMessages.DRAW_RECEIPT_UNAVAILABLE, "Only participants in the current draw can confirm receipt.");
         m.put(BotMessages.DRAW_RECEIPT_FAILED, "Could not save the confirmation.");
         m.put(BotMessages.DRAW_STATUS_CALLBACK, "Exchange status.");
+        m.put(
+                BotMessages.LATE_REGISTRATION_UNAVAILABLE_CALLBACK,
+                "Late registration can only open after the current draw is fully delivered.");
+        m.put(
+                BotMessages.LATE_REGISTRATION_UNAVAILABLE,
+                "❌ Late registration can only open after the current draw is fully delivered.");
         m.put(BotMessages.REPLACEMENT_CONFIRMATION, "Run a new draw? Current assignments will be replaced for everyone.");
         m.put(BotMessages.REPLACEMENT_CONFIRMATION_CALLBACK, "Confirm or cancel the new draw.");
         m.put(BotMessages.REPLACEMENT_CANCELLED_CALLBACK, "New draw canceled.");
