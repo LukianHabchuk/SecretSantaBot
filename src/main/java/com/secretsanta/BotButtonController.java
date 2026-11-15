@@ -68,6 +68,8 @@ final class BotButtonController {
                 BotButtons.ORGANIZER_EDIT_NAMES, this::requestOrganizerNameEdit,
                 BotButtons.ORGANIZER_RUN_DRAW, this::runDrawFromButton,
                 BotButtons.ORGANIZER_DRAW_STATUS, this::showDrawStatus,
+                BotButtons.ORGANIZER_OPEN_LATE_REGISTRATION,
+                this::openLateRegistrationFromButton,
                 BotButtons.ORGANIZER_REPLACE_DRAW, this::requestReplacementConfirmation,
                 BotButtons.ORGANIZER_CLEANUP, this::requestCleanupConfirmation);
         registrationActions = Map.of(
@@ -481,6 +483,38 @@ final class BotButtonController {
                 callback.getFrom().getId(),
                 language -> BotMessages.drawStatus(language, exchangeService.state()));
         responder.answerCallback(callback.getId(), BotMessages.DRAW_STATUS_CALLBACK);
+    }
+
+    private void openLateRegistrationFromButton(CallbackQuery callback) {
+        long userId = callback.getFrom().getId();
+        if (!exchangeService.canOpenLateRegistration()) {
+            responder.answerCallback(
+                    callback.getId(), BotMessages.LATE_REGISTRATION_UNAVAILABLE_CALLBACK);
+            responder.sendText(userId, BotMessages.LATE_REGISTRATION_UNAVAILABLE);
+            return;
+        }
+        try {
+            String inviteCode = pendingDrawService.openLateRegistration(userId);
+            responder.answerCallback(callback.getId(), BotMessages.REGISTRATION_OPEN_CALLBACK);
+            responder.sendWithKeyboard(
+                    userId,
+                    language -> BotMessages.registrationOpened(language, inviteCode),
+                    BotButtons.organizerMenu(exchangeService.state(), true));
+        } catch (IllegalStateException exception) {
+            responder.answerCallback(
+                    callback.getId(), BotMessages.LATE_REGISTRATION_UNAVAILABLE_CALLBACK);
+            responder.sendText(userId, BotMessages.LATE_REGISTRATION_UNAVAILABLE);
+        } catch (SecurityException exception) {
+            responder.answerCallback(callback.getId(), BotMessages.ORGANIZER_ONLY_CALLBACK);
+        } catch (IOException exception) {
+            LOGGER.log(
+                    Level.SEVERE,
+                    BotLogMessages.LATE_REGISTRATION_OPEN_FAILED,
+                    exception);
+            responder.answerCallback(
+                    callback.getId(), BotMessages.REGISTRATION_OPEN_FAILED_CALLBACK);
+            responder.sendText(userId, BotMessages.REGISTRATION_OPEN_FAILED);
+        }
     }
 
     private void requestReplacementConfirmation(CallbackQuery callback) {

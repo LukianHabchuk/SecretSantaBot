@@ -17,6 +17,8 @@ final class BotLogMessages {
             "Could not read organizer state for onboarding.";
     static final String ONBOARDING_REGISTRATION_OPEN_FAILED =
             "Could not open registration from onboarding.";
+    static final String LATE_REGISTRATION_OPEN_FAILED =
+            "Could not open late registration from organizer controls.";
     static final String ONBOARDING_RESET_FAILED =
             "Could not reset registration from onboarding.";
     static final String ONBOARDING_AUTHORIZATION_CHECK_FAILED =

@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.logging.Handler;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
@@ -1324,6 +1325,42 @@ class SecretSantaBotTest {
     }
 
     @Test
+    void runDuringLateEnrollmentRequiresExplicitReplacementAndKeepsTheCurrentDraw()
+            throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+        String inviteCode = openRegistration(bot, messenger);
+        for (long userId = 201L; userId <= 203L; userId++) {
+            bot.onUpdateReceived(update(
+                    userId, userId, "private", "/join " + inviteCode + " Guest " + userId));
+        }
+        bot.onUpdateReceived(update(100L, 100L, "private", "/run"));
+
+        ExchangeService exchangeService = new ExchangeService(
+                organizerService, new ExchangeStore(dataDirectory, TEST_DATA_KEY));
+        PendingDrawService pendingDrawService = new PendingDrawService(
+                testPendingDrawStore(), exchangeService, organizerService, messenger);
+        pendingDrawService.openLateRegistration(100L);
+        ExchangeState lateRegistration = new ExchangeStore(dataDirectory, TEST_DATA_KEY)
+                .load()
+                .orElseThrow();
+        int messageCountBeforeRun = messenger.sentMessages.size();
+        SecretSantaBot restartedBot = createBot(organizerService, messenger);
+
+        restartedBot.onUpdateReceived(update(100L, 100L, "private", "/run"));
+
+        ExchangeState stateAfterRun = new ExchangeStore(dataDirectory, TEST_DATA_KEY)
+                .load()
+                .orElseThrow();
+        assertEquals(messageCountBeforeRun + 1, messenger.sentMessages.size());
+        assertEquals(ExchangeState.Phase.LATE_REGISTRATION_OPEN, stateAfterRun.phase());
+        assertEquals(lateRegistration.assignments(), stateAfterRun.assignments());
+        assertTrue(messenger.sentMessages.getLast().text().contains("Пізню реєстрацію відкрито"));
+        assertTrue(messenger.sentMessages.getLast().text().contains("підтверди нове жеребкування"));
+    }
+
+    @Test
     void participantCanConfirmReceiptFromTheirPrivateAssignmentMessage() throws Exception {
         OrganizerService organizerService = createService();
         TestTelegramMessenger messenger = new TestTelegramMessenger();
@@ -1468,6 +1505,136 @@ class SecretSantaBotTest {
                 .orElseThrow()
                 .confirmedUserIds()
                 .isEmpty());
+    }
+
+    @Test
+    void lateRegistrationButtonIsHiddenBeforeDeliveryAndRejectsStaleOrUnauthorizedCallbacks()
+            throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+        openRegistration(bot, messenger);
+        bot.onUpdateReceived(update(100L, 100L, "private", "/start"));
+
+        assertFalse(messenger.sentMessages.getLast().keyboard().getKeyboard().stream()
+                .flatMap(List::stream)
+                .anyMatch(button -> button.getCallbackData()
+                        .equals("organizer:open-late-registration")));
+        ExchangeState beforeCallbacks = new ExchangeStore(dataDirectory, TEST_DATA_KEY)
+                .load()
+                .orElseThrow();
+
+        bot.onUpdateReceived(callbackUpdate(
+                "organizer:open-late-registration", 100L, 100L, "premature-late-registration"));
+        assertEquals(
+                beforeCallbacks,
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow());
+        assertTrue(messenger.sentMessages.getLast().text().contains("після повної доставки"));
+
+        bot.onUpdateReceived(callbackUpdate(
+                "organizer:open-late-registration", 201L, 201L, "unauthorized-late-registration"));
+        assertEquals(
+                beforeCallbacks,
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow());
+        assertTrue(messenger.callbackAnswers.getLast().text().contains("лише організатору"));
+    }
+
+    @Test
+    void organizerOpensLateEnrollmentPrivatelyAndConfirmsReplacementAfterTheJoin()
+            throws Exception {
+        OrganizerService organizerService = createService();
+        TestTelegramMessenger messenger = new TestTelegramMessenger();
+        SecretSantaBot bot = createBot(organizerService, messenger);
+        String initialInviteCode = openRegistration(bot, messenger);
+        for (long userId = 201L; userId <= 203L; userId++) {
+            bot.onUpdateReceived(update(
+                    userId, userId, "private", "/join " + initialInviteCode + " Guest " + userId));
+        }
+        bot.onUpdateReceived(update(100L, 100L, "private", "/run"));
+        ExchangeState originalDraw =
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow();
+
+        bot.onUpdateReceived(update(100L, 100L, "private", "/start"));
+        String lateRegistrationButton = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Відкрити пізню реєстрацію");
+        long originalAssignmentMessages = assignmentMessageCount(messenger.sentMessages);
+        bot.onUpdateReceived(callbackUpdate(
+                lateRegistrationButton, 100L, 100L, "open-late-registration"));
+
+        ExchangeState lateRegistration =
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow();
+        assertEquals(ExchangeState.Phase.LATE_REGISTRATION_OPEN, lateRegistration.phase());
+        assertEquals(originalDraw.drawGeneration(), lateRegistration.drawGeneration());
+        assertEquals(originalDraw.assignments(), lateRegistration.assignments());
+        assertEquals(originalAssignmentMessages, assignmentMessageCount(messenger.sentMessages));
+        assertFalse(initialInviteCode.equals(lateRegistration.inviteCode()));
+        bot.onUpdateReceived(callbackUpdate(
+                lateRegistrationButton, 100L, 100L, "stale-late-registration"));
+        assertEquals(
+                lateRegistration,
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow());
+        List<SentMessage> inviteMessages = messenger.sentMessages.stream()
+                .filter(message -> message.text().contains(lateRegistration.inviteCode()))
+                .toList();
+        assertEquals(1, inviteMessages.size());
+        assertEquals(100L, inviteMessages.getFirst().chatId());
+
+        bot.onUpdateReceived(update(301L, 301L, "private", "/start"));
+        String joinButton = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Приєднатися за кодом");
+        bot.onUpdateReceived(callbackUpdate(joinButton, 301L, 301L, "join-late-participant"));
+        bot.onUpdateReceived(update(301L, 301L, "private", lateRegistration.inviteCode()));
+        String joinConfirmation = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Підтвердити ім'я");
+        bot.onUpdateReceived(callbackUpdate(
+                joinConfirmation, 301L, 301L, "confirm-late-participant"));
+        ExchangeState expandedRoster =
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow();
+        assertEquals(5, expandedRoster.participants().size());
+        assertEquals(originalDraw.assignments(), expandedRoster.assignments());
+        assertEquals(originalDraw.drawGeneration(), expandedRoster.drawGeneration());
+
+        bot.onUpdateReceived(update(301L, 301L, "private", "/start"));
+        assertFalse(messenger.sentMessages.getLast().keyboard().getKeyboard().stream()
+                .flatMap(List::stream)
+                .anyMatch(button -> button.getCallbackData()
+                        .equals(BotButtons.PARTICIPANT_EDIT_NAME)));
+
+        bot.onUpdateReceived(update(100L, 100L, "private", "/start"));
+        String replaceButton = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Провести нове жеребкування");
+        bot.onUpdateReceived(callbackUpdate(replaceButton, 100L, 100L, "request-late-replacement"));
+        ExchangeState beforeConfirmation =
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow();
+        String confirmButton = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Так, замінити розподіл");
+        String cancelButton = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Скасувати");
+        assertTrue(messenger.sentMessages.getLast().text().contains("для всіх учасників"));
+        bot.onUpdateReceived(callbackUpdate(cancelButton, 100L, 100L, "cancel-late-replacement"));
+        assertEquals(
+                beforeConfirmation,
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow());
+        bot.onUpdateReceived(callbackUpdate(
+                confirmButton, 100L, 100L, "stale-late-replacement-confirmation"));
+        assertEquals(
+                beforeConfirmation,
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow());
+
+        bot.onUpdateReceived(callbackUpdate(replaceButton, 100L, 100L, "request-late-replacement-again"));
+        confirmButton = callbackDataFor(
+                messenger.sentMessages.getLast().keyboard(), "Так, замінити розподіл");
+        bot.onUpdateReceived(callbackUpdate(
+                confirmButton, 100L, 100L, "confirm-late-replacement"));
+
+        ExchangeState replacement =
+                new ExchangeStore(dataDirectory, TEST_DATA_KEY).load().orElseThrow();
+        assertEquals(ExchangeState.Phase.AWAITING_CONFIRMATIONS, replacement.phase());
+        assertEquals(originalDraw.drawGeneration() + 1, replacement.drawGeneration());
+        assertEquals(5, replacement.assignments().size());
+        assertEquals(
+                Set.of(100L, 201L, 202L, 203L, 301L),
+                replacement.deliveredUserIds());
     }
 
     @Test
@@ -1669,6 +1836,17 @@ class SecretSantaBotTest {
                 .map(InlineKeyboardButton::getCallbackData)
                 .findFirst()
                 .orElseThrow();
+    }
+
+    private static long assignmentMessageCount(List<SentMessage> messages) {
+        return messages.stream()
+                .filter(message -> message.keyboard() != null)
+                .filter(message -> message.keyboard().getKeyboard().stream()
+                        .flatMap(List::stream)
+                        .anyMatch(button -> button.getCallbackData() != null
+                                && button.getCallbackData()
+                                        .startsWith(BotButtons.DRAW_RECEIVED_PREFIX)))
+                .count();
     }
 
     private static Update callbackUpdate(

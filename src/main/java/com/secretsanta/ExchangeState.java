@@ -15,17 +15,40 @@ record ExchangeState(
         long drawGeneration,
         List<Assignment> assignments,
         Set<Long> deliveredUserIds,
-        Set<Long> confirmedUserIds) {
+        Set<Long> confirmedUserIds,
+        Set<Long> firstAssignmentUserIds) {
     private static final int MAX_PARTICIPANTS = 10_000;
     private static final int MAX_NAME_CODE_POINTS = 64;
     private static final int MAX_INVITE_CODE_CODE_POINTS = 256;
+
+    ExchangeState(
+            Phase phase,
+            String inviteCode,
+            List<Participant> participants,
+            List<PairRequest> pairRequests,
+            long drawGeneration,
+            List<Assignment> assignments,
+            Set<Long> deliveredUserIds,
+            Set<Long> confirmedUserIds) {
+        this(
+                phase,
+                inviteCode,
+                participants,
+                pairRequests,
+                drawGeneration,
+                assignments,
+                deliveredUserIds,
+                confirmedUserIds,
+                Set.of());
+    }
 
     enum Phase {
         EMPTY,
         REGISTRATION_OPEN,
         DELIVERING,
         AWAITING_CONFIRMATIONS,
-        REGISTRATION_CLOSED
+        REGISTRATION_CLOSED,
+        LATE_REGISTRATION_OPEN
     }
 
     record Participant(long userId, String name, Long partnerId) {
@@ -78,13 +101,17 @@ record ExchangeState(
                 deliveredUserIds, "Delivery progress is required."));
         confirmedUserIds = Set.copyOf(Objects.requireNonNull(
                 confirmedUserIds, "Receipt confirmations are required."));
-        if (phase == Phase.REGISTRATION_OPEN && inviteCode != null) {
+        firstAssignmentUserIds = Set.copyOf(Objects.requireNonNull(
+                firstAssignmentUserIds, "First-assignment progress is required."));
+        if ((phase == Phase.REGISTRATION_OPEN || phase == Phase.LATE_REGISTRATION_OPEN)
+                && inviteCode != null) {
             inviteCode = inviteCode.strip();
         }
 
         if (participants.size() > MAX_PARTICIPANTS
                 || pairRequests.size() > MAX_PARTICIPANTS
-                || assignments.size() > MAX_PARTICIPANTS) {
+                || assignments.size() > MAX_PARTICIPANTS
+                || firstAssignmentUserIds.size() > MAX_PARTICIPANTS) {
             throw new IllegalArgumentException("Exchange state is too large.");
         }
         if (drawGeneration < 0) {
@@ -103,6 +130,7 @@ record ExchangeState(
                 assignments,
                 deliveredUserIds,
                 confirmedUserIds,
+                firstAssignmentUserIds,
                 participantsById);
     }
 
@@ -169,6 +197,7 @@ record ExchangeState(
             List<Assignment> assignments,
             Set<Long> deliveredUserIds,
             Set<Long> confirmedUserIds,
+            Set<Long> firstAssignmentUserIds,
             Map<Long, Participant> participantsById) {
         if (phase == Phase.EMPTY) {
             if (inviteCode != null
@@ -177,7 +206,8 @@ record ExchangeState(
                     || drawGeneration != 0
                     || !assignments.isEmpty()
                     || !deliveredUserIds.isEmpty()
-                    || !confirmedUserIds.isEmpty()) {
+                    || !confirmedUserIds.isEmpty()
+                    || !firstAssignmentUserIds.isEmpty()) {
                 throw new IllegalArgumentException("Empty exchange state contains data.");
             }
             return;
@@ -195,7 +225,8 @@ record ExchangeState(
                     || drawGeneration != 0
                     || !assignments.isEmpty()
                     || !deliveredUserIds.isEmpty()
-                    || !confirmedUserIds.isEmpty()) {
+                    || !confirmedUserIds.isEmpty()
+                    || !firstAssignmentUserIds.isEmpty()) {
                 throw new IllegalArgumentException("Open registration state is invalid.");
             }
             return;
@@ -207,24 +238,43 @@ record ExchangeState(
                     || drawGeneration != 0
                     || !assignments.isEmpty()
                     || !deliveredUserIds.isEmpty()
-                    || !confirmedUserIds.isEmpty()) {
+                    || !confirmedUserIds.isEmpty()
+                    || !firstAssignmentUserIds.isEmpty()) {
                 throw new IllegalArgumentException("Closed registration state is invalid.");
             }
             return;
         }
 
-        if (inviteCode != null || drawGeneration < 1 || !pairRequests.isEmpty()) {
+        boolean lateRegistration = phase == Phase.LATE_REGISTRATION_OPEN;
+        if (lateRegistration) {
+            if (inviteCode == null
+                    || inviteCode.isBlank()
+                    || inviteCode.codePointCount(0, inviteCode.length())
+                            > MAX_INVITE_CODE_CODE_POINTS
+                    || inviteCode.codePoints().anyMatch(Character::isISOControl)
+                    || drawGeneration < 1
+                    || !pairRequests.isEmpty()) {
+                throw new IllegalArgumentException("Late registration state is invalid.");
+            }
+        } else if (inviteCode != null || drawGeneration < 1 || !pairRequests.isEmpty()) {
             throw new IllegalArgumentException("Draw state is invalid.");
         }
-        validateAssignments(assignments, participantsById);
+        validateAssignments(assignments, participantsById, !lateRegistration);
 
         Set<Long> giverIds = assignments.stream()
                 .map(Assignment::giverId)
                 .collect(java.util.stream.Collectors.toSet());
         if (!giverIds.containsAll(deliveredUserIds)
                 || !giverIds.containsAll(confirmedUserIds)
-                || !deliveredUserIds.containsAll(confirmedUserIds)) {
+                || !deliveredUserIds.containsAll(confirmedUserIds)
+                || !giverIds.containsAll(firstAssignmentUserIds)
+                || (phase != Phase.DELIVERING && !firstAssignmentUserIds.isEmpty())
+                || (!firstAssignmentUserIds.isEmpty() && drawGeneration == 1)) {
             throw new IllegalArgumentException("Draw delivery or confirmation state is invalid.");
+        }
+        if (lateRegistration && !deliveredUserIds.equals(giverIds)) {
+            throw new IllegalArgumentException(
+                    "Late registration requires the previous draw to be fully delivered.");
         }
         if (phase == Phase.AWAITING_CONFIRMATIONS && !deliveredUserIds.equals(giverIds)) {
             throw new IllegalArgumentException(
@@ -233,8 +283,12 @@ record ExchangeState(
     }
 
     private static void validateAssignments(
-            List<Assignment> assignments, Map<Long, Participant> participantsById) {
-        if (participantsById.size() < 2 || assignments.size() != participantsById.size()) {
+            List<Assignment> assignments,
+            Map<Long, Participant> participantsById,
+            boolean requireEveryParticipant) {
+        if (participantsById.size() < 2
+                || assignments.size() < 2
+                || (requireEveryParticipant && assignments.size() != participantsById.size())) {
             throw new IllegalArgumentException("Draw assignments are incomplete.");
         }
 
@@ -254,8 +308,8 @@ record ExchangeState(
                 throw new IllegalArgumentException("Draw assignments are invalid.");
             }
         }
-        if (!giverIds.equals(participantsById.keySet())
-                || !receiverIds.equals(participantsById.keySet())) {
+        if (!giverIds.equals(receiverIds)
+                || (requireEveryParticipant && !giverIds.equals(participantsById.keySet()))) {
             throw new IllegalArgumentException("Draw assignments are incomplete.");
         }
     }

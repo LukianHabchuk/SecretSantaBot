@@ -13,7 +13,8 @@ final class PendingDrawService {
     enum Status {
         COMPLETED,
         PENDING,
-        TOO_FEW_PARTICIPANTS
+        TOO_FEW_PARTICIPANTS,
+        REPLACEMENT_CONFIRMATION_REQUIRED
     }
 
     record Result(Status status, int failedDeliveries) {}
@@ -68,6 +69,12 @@ final class PendingDrawService {
         }
     }
 
+    String openLateRegistration(long organizerId) throws IOException {
+        try (PendingDrawStore.LockHandle ignored = store.acquireDrawLock()) {
+            return exchangeService.openLateRegistration(organizerId);
+        }
+    }
+
     boolean hasPendingDraw() throws IOException {
         try (PendingDrawStore.LockHandle ignored = store.acquireDrawLock()) {
             return store.load().isPresent() || exchangeService.hasActiveDraw();
@@ -96,6 +103,8 @@ final class PendingDrawService {
                         .toList();
                 exchangeService.beginDraw(persistedAssignments);
                 state = exchangeService.state();
+            } else if (state.phase() == ExchangeState.Phase.LATE_REGISTRATION_OPEN) {
+                return new Result(Status.REPLACEMENT_CONFIRMATION_REQUIRED, 0);
             } else if (state.phase() == ExchangeState.Phase.AWAITING_CONFIRMATIONS) {
                 return new Result(Status.COMPLETED, 0);
             } else if (state.phase() != ExchangeState.Phase.DELIVERING) {
@@ -145,7 +154,11 @@ final class PendingDrawService {
                 telegramMessenger.sendMessage(
                         assignment.giverId(),
                         assignmentMessage(
-                                language, participantNames.get(assignment.receiverId()), replacement),
+                                language,
+                                participantNames.get(assignment.receiverId()),
+                                replacement
+                                        && !state.firstAssignmentUserIds().contains(
+                                                assignment.giverId())),
                         BotButtons.localize(language,
                                 BotButtons.assignmentReceived(state.drawGeneration())));
             } catch (TelegramApiException exception) {

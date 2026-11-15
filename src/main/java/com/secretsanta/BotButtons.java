@@ -36,6 +36,7 @@ final class BotButtons {
             ORGANIZER_EDIT_NAMES + ":target:";
     static final String ORGANIZER_RUN_DRAW = "organizer:run-draw";
     static final String ORGANIZER_DRAW_STATUS = "organizer:draw-status";
+    static final String ORGANIZER_OPEN_LATE_REGISTRATION = "organizer:open-late-registration";
     static final String ORGANIZER_REPLACE_DRAW = "organizer:replace-draw";
     static final String REPLACE_DRAW_CONFIRM_PREFIX = ORGANIZER_REPLACE_DRAW + ":confirm:";
     static final String REPLACE_DRAW_CANCEL_PREFIX = ORGANIZER_REPLACE_DRAW + ":cancel:";
@@ -93,6 +94,7 @@ final class BotButtons {
             case ORGANIZER_RUN_DRAW -> item.getText().equals("Повторити доставку")
                     ? "Retry delivery" : "Run the draw";
             case ORGANIZER_DRAW_STATUS -> "Exchange status";
+            case ORGANIZER_OPEN_LATE_REGISTRATION -> "Open late registration";
             case ORGANIZER_REPLACE_DRAW -> "Run a new draw";
             case ORGANIZER_CLEANUP -> "Delete exchange";
             default -> null;
@@ -151,12 +153,16 @@ final class BotButtons {
             rows.add(List.of(button("Статус обміну", ORGANIZER_DRAW_STATUS)));
         } else if (state.phase() == ExchangeState.Phase.AWAITING_CONFIRMATIONS) {
             rows.add(List.of(button("Статус обміну", ORGANIZER_DRAW_STATUS)));
+            rows.add(List.of(button("Відкрити пізню реєстрацію", ORGANIZER_OPEN_LATE_REGISTRATION)));
             rows.add(List.of(button("Провести нове жеребкування", ORGANIZER_REPLACE_DRAW)));
             if (state.participants().stream()
                     .allMatch(participant ->
                             state.confirmedUserIds().contains(participant.userId()))) {
                 rows.add(List.of(button("Очистити обмін", ORGANIZER_CLEANUP)));
             }
+        } else if (state.phase() == ExchangeState.Phase.LATE_REGISTRATION_OPEN) {
+            rows.add(List.of(button("Статус обміну", ORGANIZER_DRAW_STATUS)));
+            rows.add(List.of(button("Провести нове жеребкування", ORGANIZER_REPLACE_DRAW)));
         }
         return keyboard(rows);
     }

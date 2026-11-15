@@ -23,6 +23,130 @@ class ExchangeStateTest {
     }
 
     @Test
+    void lateRegistrationRetainsTheDeliveredDrawForTheOriginalRoster() {
+        List<ExchangeState.Participant> participants = List.of(
+                new ExchangeState.Participant(101L, "Organizer", null),
+                new ExchangeState.Participant(102L, "Alex", null),
+                new ExchangeState.Participant(103L, "Sam", null),
+                new ExchangeState.Participant(104L, "Late friend", null));
+        List<ExchangeState.Assignment> previousAssignments = List.of(
+                new ExchangeState.Assignment(101L, 102L),
+                new ExchangeState.Assignment(102L, 103L),
+                new ExchangeState.Assignment(103L, 101L));
+
+        ExchangeState state = new ExchangeState(
+                ExchangeState.Phase.LATE_REGISTRATION_OPEN,
+                "existing-invite",
+                participants,
+                List.of(),
+                1,
+                previousAssignments,
+                Set.of(101L, 102L, 103L),
+                Set.of(101L, 102L));
+
+        assertEquals(ExchangeState.Phase.LATE_REGISTRATION_OPEN, state.phase());
+        assertEquals("existing-invite", state.inviteCode());
+        assertEquals(4, state.participants().size());
+        assertEquals(previousAssignments, state.assignments());
+        assertEquals(Set.of(101L, 102L, 103L), state.deliveredUserIds());
+        assertEquals(Set.of(101L, 102L), state.confirmedUserIds());
+    }
+
+    @Test
+    void lateRegistrationRequiresAllPreviousAssignmentsToBeDelivered() {
+        List<ExchangeState.Participant> participants = List.of(
+                new ExchangeState.Participant(101L, "Organizer", null),
+                new ExchangeState.Participant(102L, "Alex", null),
+                new ExchangeState.Participant(103L, "Sam", null),
+                new ExchangeState.Participant(104L, "Late friend", null));
+        List<ExchangeState.Assignment> previousAssignments = List.of(
+                new ExchangeState.Assignment(101L, 102L),
+                new ExchangeState.Assignment(102L, 103L),
+                new ExchangeState.Assignment(103L, 101L));
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new ExchangeState(
+                        ExchangeState.Phase.LATE_REGISTRATION_OPEN,
+                        "existing-invite",
+                        participants,
+                        List.of(),
+                        1,
+                        previousAssignments,
+                        Set.of(101L, 102L),
+                        Set.of(101L)));
+    }
+
+    @Test
+    void lateParticipantCannotConfirmAnAssignmentFromThePreviousDraw() {
+        List<ExchangeState.Participant> participants = List.of(
+                new ExchangeState.Participant(101L, "Organizer", null),
+                new ExchangeState.Participant(102L, "Alex", null),
+                new ExchangeState.Participant(103L, "Sam", null),
+                new ExchangeState.Participant(104L, "Late friend", null));
+        List<ExchangeState.Assignment> previousAssignments = List.of(
+                new ExchangeState.Assignment(101L, 102L),
+                new ExchangeState.Assignment(102L, 103L),
+                new ExchangeState.Assignment(103L, 101L));
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new ExchangeState(
+                        ExchangeState.Phase.LATE_REGISTRATION_OPEN,
+                        "existing-invite",
+                        participants,
+                        List.of(),
+                        1,
+                        previousAssignments,
+                        Set.of(101L, 102L, 103L),
+                        Set.of(101L, 104L)));
+    }
+
+    @Test
+    void replacementTracksParticipantsReceivingTheirFirstAssignment() {
+        ExchangeState state = new ExchangeState(
+                ExchangeState.Phase.DELIVERING,
+                null,
+                List.of(
+                        new ExchangeState.Participant(101L, "Organizer", null),
+                        new ExchangeState.Participant(102L, "Alex", null),
+                        new ExchangeState.Participant(103L, "Sam", null)),
+                List.of(),
+                2,
+                List.of(
+                        new ExchangeState.Assignment(101L, 102L),
+                        new ExchangeState.Assignment(102L, 103L),
+                        new ExchangeState.Assignment(103L, 101L)),
+                Set.of(),
+                Set.of(),
+                Set.of(103L));
+
+        assertEquals(Set.of(103L), state.firstAssignmentUserIds());
+    }
+
+    @Test
+    void firstAssignmentTrackingMustReferToCurrentDrawGivers() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new ExchangeState(
+                        ExchangeState.Phase.DELIVERING,
+                        null,
+                        List.of(
+                                new ExchangeState.Participant(101L, "Organizer", null),
+                                new ExchangeState.Participant(102L, "Alex", null),
+                                new ExchangeState.Participant(103L, "Sam", null)),
+                        List.of(),
+                        2,
+                        List.of(
+                                new ExchangeState.Assignment(101L, 102L),
+                                new ExchangeState.Assignment(102L, 103L),
+                                new ExchangeState.Assignment(103L, 101L)),
+                        Set.of(),
+                        Set.of(),
+                        Set.of(104L)));
+    }
+
+    @Test
     void closedRegistrationRetainsTheRosterWithoutInviteOrDrawData() {
         ExchangeState state = new ExchangeState(
                 ExchangeState.Phase.REGISTRATION_CLOSED,

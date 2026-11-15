@@ -1,6 +1,7 @@
 package com.secretsanta;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -52,5 +53,54 @@ class BotMessagesLocalizationTest {
         assertTrue(status.contains("Delivered: 2/2"));
         assertTrue(status.contains("Олена — confirmed receipt"));
         assertTrue(status.contains("Sam — awaiting confirmation"));
+    }
+
+    @Test
+    void lateRegistrationControlsArePhaseGatedAndLocalized() {
+        List<ExchangeState.Participant> participants = List.of(
+                new ExchangeState.Participant(101L, "Олена", null),
+                new ExchangeState.Participant(102L, "Sam", null));
+        List<ExchangeState.Assignment> assignments = List.of(
+                new ExchangeState.Assignment(101L, 102L),
+                new ExchangeState.Assignment(102L, 101L));
+        ExchangeState delivered = new ExchangeState(
+                ExchangeState.Phase.AWAITING_CONFIRMATIONS,
+                null,
+                participants,
+                List.of(),
+                1,
+                assignments,
+                Set.of(101L, 102L),
+                Set.of());
+
+        var deliveredMenu = BotButtons.organizerMenu(delivered, false);
+        assertTrue(deliveredMenu.getKeyboard().stream()
+                .flatMap(List::stream)
+                .anyMatch(button -> BotButtons.ORGANIZER_OPEN_LATE_REGISTRATION
+                        .equals(button.getCallbackData())));
+        assertTrue(BotButtons.localize(BotLanguage.ENGLISH, deliveredMenu).getKeyboard().stream()
+                .flatMap(List::stream)
+                .anyMatch(button -> button.getText().equals("Open late registration")));
+
+        ExchangeState lateRegistration = new ExchangeState(
+                ExchangeState.Phase.LATE_REGISTRATION_OPEN,
+                "invite-code",
+                participants,
+                List.of(),
+                1,
+                assignments,
+                Set.of(101L, 102L),
+                Set.of());
+        var lateMenu = BotButtons.organizerMenu(lateRegistration, false);
+        assertFalse(lateMenu.getKeyboard().stream()
+                .flatMap(List::stream)
+                .anyMatch(button -> BotButtons.ORGANIZER_OPEN_LATE_REGISTRATION
+                        .equals(button.getCallbackData())));
+        assertTrue(lateMenu.getKeyboard().stream()
+                .flatMap(List::stream)
+                .anyMatch(button -> BotButtons.ORGANIZER_REPLACE_DRAW
+                        .equals(button.getCallbackData())));
+        assertTrue(EnglishMessages.translate(BotMessages.LATE_REGISTRATION_UNAVAILABLE)
+                .contains("fully delivered"));
     }
 }

@@ -308,6 +308,113 @@ class PendingDrawServiceTest {
     }
 
     @Test
+    void opensLateRegistrationThroughTheDrawLockService() throws Exception {
+        OrganizerService organizerService = createOrganizerService();
+        ExchangeService exchangeService = createExchangeWithThreeParticipants(organizerService);
+        PendingDrawService service = new PendingDrawService(
+                new PendingDrawStore(dataDirectory, KEY),
+                exchangeService,
+                organizerService,
+                new RecordingMessenger(null));
+        assertEquals(PendingDrawService.Status.COMPLETED, service.run().status());
+        ExchangeState previousDraw = exchangeService.state();
+
+        String lateInviteCode = service.openLateRegistration(100L);
+
+        assertEquals(ExchangeState.Phase.LATE_REGISTRATION_OPEN, exchangeService.state().phase());
+        assertEquals(lateInviteCode, exchangeService.state().inviteCode());
+        assertEquals(previousDraw.assignments(), exchangeService.state().assignments());
+        assertEquals(previousDraw.deliveredUserIds(), exchangeService.state().deliveredUserIds());
+        assertTrue(service.hasPendingDraw());
+    }
+
+    @Test
+    void replacementForLateParticipantRetriesSameGenerationWithPrivateFirstAssignmentWording()
+            throws Exception {
+        OrganizerService organizerService = createOrganizerService();
+        ExchangeService exchangeService = createExchangeWithThreeParticipants(organizerService);
+        exchangeService.pair(201L, 202L);
+        LanguageStore languages = new LanguageStore(dataDirectory, KEY);
+        for (long userId : List.of(100L, 201L, 202L, 203L, 301L)) {
+            languages.set(userId, BotLanguage.ENGLISH);
+        }
+        RecordingMessenger messenger = new RecordingMessenger(null);
+        PendingDrawService service = new PendingDrawService(
+                new PendingDrawStore(dataDirectory, KEY),
+                exchangeService,
+                organizerService,
+                messenger,
+                languages);
+
+        assertEquals(PendingDrawService.Status.COMPLETED, service.run().status());
+        exchangeService.confirmReceipt(100L, exchangeService.state().drawGeneration());
+        ExchangeState originalDraw = exchangeService.state();
+        assertEquals(Set.of(100L, 201L, 202L, 203L), originalDraw.deliveredUserIds());
+        assertEquals(Set.of(100L), originalDraw.confirmedUserIds());
+        String lateInviteCode = service.openLateRegistration(100L);
+        assertEquals(
+                ExchangeService.RegistrationResult.REGISTERED,
+                exchangeService.register(301L, lateInviteCode, "Late friend"));
+
+        messenger.failChatId = 301L;
+        assertEquals(PendingDrawService.Status.PENDING, service.replaceDraw().status());
+        ExchangeState pendingReplacement = exchangeService.state();
+        assertEquals(2, pendingReplacement.drawGeneration());
+        assertEquals(5, pendingReplacement.assignments().size());
+        assertEquals(
+                Set.of(100L, 201L, 202L, 203L),
+                pendingReplacement.deliveredUserIds());
+        assertTrue(pendingReplacement.confirmedUserIds().isEmpty());
+        assertTrue(pendingReplacement.assignments().stream().noneMatch(assignment ->
+                (assignment.giverId() == 201L && assignment.receiverId() == 202L)
+                        || (assignment.giverId() == 202L && assignment.receiverId() == 201L)));
+        assertEquals(ExchangeService.InviteStatus.CLOSED, exchangeService.inviteStatus(lateInviteCode));
+
+        List<SentMessage> replacementMessages = messenger.messages().subList(4, 9);
+        for (ExchangeState.Assignment assignment : pendingReplacement.assignments()) {
+            SentMessage message = replacementMessages.stream()
+                    .filter(sent -> sent.chatId() == assignment.giverId())
+                    .findFirst()
+                    .orElseThrow();
+            String receiverName = pendingReplacement.participants().stream()
+                    .filter(participant -> participant.userId() == assignment.receiverId())
+                    .findFirst()
+                    .orElseThrow()
+                    .name();
+            assertTrue(message.text().contains(receiverName));
+            pendingReplacement.participants().stream()
+                    .filter(participant -> participant.userId() != assignment.receiverId())
+                    .forEach(participant -> assertFalse(message.text().contains(participant.name())));
+            if (assignment.giverId() == 301L) {
+                assertFalse(message.text().contains("replaces your previous assignment"));
+            } else {
+                assertTrue(message.text().contains("replaces your previous assignment"));
+            }
+        }
+
+        OrganizerService restartedOrganizerService =
+                new OrganizerService(new OrganizerStore(dataDirectory), "setup-code");
+        ExchangeService restartedExchangeService =
+                new ExchangeService(restartedOrganizerService, new ExchangeStore(dataDirectory, KEY));
+        RecordingMessenger retryMessenger = new RecordingMessenger(null);
+        PendingDrawService restartedService = new PendingDrawService(
+                new PendingDrawStore(dataDirectory, KEY),
+                restartedExchangeService,
+                restartedOrganizerService,
+                retryMessenger,
+                languages);
+
+        assertEquals(PendingDrawService.Status.COMPLETED, restartedService.run().status());
+        assertEquals(pendingReplacement.assignments(), restartedExchangeService.state().assignments());
+        assertEquals(2, restartedExchangeService.state().drawGeneration());
+        assertTrue(restartedExchangeService.state().firstAssignmentUserIds().isEmpty());
+        assertEquals(1, retryMessenger.messages().size());
+        assertEquals(301L, retryMessenger.messages().getFirst().chatId());
+        assertFalse(retryMessenger.messages().getFirst().text()
+                .contains("replaces your previous assignment"));
+    }
+
+    @Test
     void replacementDrawIncrementsGenerationAndClearsPreviousConfirmations() throws Exception {
         OrganizerService organizerService = createOrganizerService();
         ExchangeService exchangeService = createExchangeWithThreeParticipants(organizerService);

@@ -13,7 +13,8 @@ option to edit it), and can later update their registered display name before
 the draw. The organizer can also update any participant's display name before
 the draw. Participants can propose partner pairs that require mutual acceptance.
 The organizer can review and override pairings, start or rerun a complete draw,
-and eventually delete the exchange after all participants confirm.
+reopen registration for a late participant after a completed draw, and
+eventually delete the exchange after all participants confirm.
 
 The organizer is also a participant. The bot sends each participant only their
 own assignment. It must not display or log the full giver-to-recipient mapping
@@ -36,6 +37,12 @@ roster, pair exclusions, and their own assignment, especially in a small group.
   create or replace a pair.
 - As the organizer, I can start an assignment from a button. Every participant,
   including me, receives only their own assignment in the same private chat.
+- As the organizer, after a draw has been fully delivered, I can explicitly
+  reopen registration so a friend who missed the first draw can join privately
+  with a fresh invite code for the late-enrollment window.
+- As the organizer, after late participants have joined, I can explicitly
+  confirm a complete replacement draw. Everyone receives a new private
+  assignment message, and the previous draw is superseded.
 - As a participant, I can confirm receipt of the current assignment.
 - As the organizer, I can request a complete replacement draw before cleanup,
   or delete the exchange after all participants confirm.
@@ -57,8 +64,11 @@ arbitrary non-partner exclusions are out of scope.
   participant; the organizer can change it directly.
 - Assignment cannot start while any participant pair request is unresolved.
   Requests must first be accepted, declined, or canceled by the requester.
-- The invitation remains valid until assignment starts. Starting assignment
-  closes registration.
+- The initial invitation is valid until the first assignment starts. After a
+  draw is fully delivered, the organizer may explicitly reopen registration;
+  the bot generates a fresh invite code for that late-enrollment window and
+  sends it only to the organizer. Starting a replacement draw closes the
+  window and invalidates that code.
 - Before assignment starts, participants may edit their own display names and
   the organizer may edit any participant's display name. Name edits use the
   existing signup validation and do not change participant identity or pairing
@@ -68,6 +78,15 @@ arbitrary non-partner exclusions are out of scope.
 - A new full draw is permitted only after the previous draw was fully delivered
   and before exchange cleanup. It replaces the prior assignments for everyone;
   each recipient must be told that the new result supersedes their previous one.
+- Late enrollment is available only after the current draw is fully delivered
+  and before cleanup. Each organizer-opened window gets a fresh invite code,
+  which is sent only to the organizer and remains valid through that window,
+  including across restarts. A late participant joins through the normal
+  private invite-code flow and signup validation. The organizer then explicitly
+  confirms a complete replacement draw, which closes the window and invalidates
+  its code. Existing participants and accepted pairs remain; the new
+  participant joins unpaired. Any unresolved pair requests must be resolved
+  before the replacement draw.
 - Confirmation applies only to the current draw. A replacement draw clears all
   prior confirmations. Stale buttons from an older draw cannot confirm the new
   one.
@@ -165,9 +184,12 @@ delivery payloads. Do not place credentials or keys in source files or docs.
    their Telegram first name, and join once. The bot uses Telegram's sender ID
    as the participant identity. It does not collect usernames, phone numbers, or
    other profile fields unless separately approved.
-5. The invitation is reusable for the active exchange until assignment starts.
-   Registration is then closed. A restart does not invalidate the invitation or
-   discard the roster.
+5. The invitation is reusable for the active exchange during initial
+   registration. After a draw is fully delivered, the organizer may reopen
+   registration and the bot generates a fresh invite code for that window,
+   which it sends only to the organizer. Confirming a replacement draw closes
+   the window and invalidates its code. A restart does not invalidate the
+   current invitation or discard the roster.
 6. Persist the active exchange across restarts, including participant IDs and
    display names, invite/registration state, accepted pairs, pending pair
    requests, current assignment generation, delivery progress, and current-draw
@@ -234,6 +256,25 @@ delivery payloads. Do not place credentials or keys in source files or docs.
     atomically. Report success only after persistence succeeds; reject edits
     after assignment starts. The organizer must be able to target the intended
     participant even when display names are identical.
+19. After a draw is fully delivered and before cleanup, the organizer can
+    explicitly reopen registration. During this window, a late participant can
+    start the bot privately, enter the fresh invite code generated for this
+    window, and complete the normal signup/name-confirmation flow. Send the code
+    only to the organizer, persist it across restart, and invalidate it when
+    the window closes. Reject joins outside this window, duplicate joins,
+    invalid invite codes, and non-private interactions without changing the
+    exchange. Preserve existing participants, accepted pairs, and the current
+    draw until a replacement is confirmed.
+20. After one or more late participants join, the organizer can explicitly
+    confirm a complete replacement draw. Confirmation closes late registration
+    and uses the existing replacement-draw rules: require complete prior
+    delivery and resolved pair requests; persist a valid full draw before any
+    send; tell previously assigned participants that their old result is
+    superseded; send late participants the normal first-assignment notice;
+    privately send each person only their new assignment; retry the same
+    generation after failures; clear old confirmations; and reject stale
+    callbacks. If no valid draw can be generated or persistence fails, send no
+    assignments and report the failure without claiming success.
 
 ## Localization: English and Ukrainian
 
@@ -300,6 +341,14 @@ delivery payloads. Do not place credentials or keys in source files or docs.
   failed-delivery retry without redrawing, stale buttons, acknowledgement
   tracking/reset on reroll, and deletion only after all current participants
   confirm.
+- Test that late enrollment is organizer-opened, only available after complete
+  delivery and before cleanup, generates an organizer-only code that survives
+  restart, uses the normal private signup flow, invalidates the code when
+  closed, rejects duplicates and out-of-window joins, and preserves existing
+  roster and pair state. Test that a confirmed replacement includes the late
+  participant, sends replacement notices to previous participants and
+  first-assignment notices to late joiners, retains private assignment delivery,
+  and retries the same generation after failure.
 - Use the offline simulator for manual interaction tests without Telegram
   credentials or network access. Use a separate test bot for Telegram transport
   verification before any real exchange.
@@ -315,8 +364,9 @@ delivery payloads. Do not place credentials or keys in source files or docs.
   reset/cleanup actions explicit and confirmed.
 - **Ask first:** Add dependencies or external services; change the single-active-
   exchange scope; collect additional Telegram profile data; change assignment,
-  pairing-consent, persistence, reassignment, or cleanup policies; deploy to a
-  production host.
+  pairing-consent, persistence, reassignment, or cleanup policies beyond the
+  late-enrollment and replacement flow specified here; deploy to a production
+  host.
 - **Never:** Commit real secrets; send assignments to a group; show or log the
   full assignment mapping to the organizer; replace a draw while its delivery
   may be partially complete; reset an in-progress draw; delete retained
@@ -341,6 +391,10 @@ delivery payloads. Do not place credentials or keys in source files or docs.
 - Organizer-facing messages and application logs reveal no full mapping.
 - Failed delivery never triggers a new draw; explicit complete redraws notify
   everyone and replace all assignments consistently.
+- After a fully delivered draw, the organizer can open a late-enrollment window;
+  the bot sends a fresh invite code only to the organizer, a friend can join
+  privately with it, and an explicitly confirmed replacement includes them and
+  sends a new assignment to everyone.
 - Cleanup is unavailable until every participant confirms the current draw and
   the organizer confirms deletion.
 - Tests/build pass and a separate test-bot walkthrough verifies Telegram

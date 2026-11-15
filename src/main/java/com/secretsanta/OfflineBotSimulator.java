@@ -152,6 +152,12 @@ public final class OfflineBotSimulator {
         output.println("  as 100 /run");
         output.println("  recover 203");
         output.println("  as 100 /start, then click the current draw's retry button");
+        output.println("After every assignment is delivered, use /start and click "
+                + "Open late registration to get a fresh invite.");
+        output.println("Late participants join with that code; use Run a new draw and "
+                + "confirm to replace assignments for everyone.");
+        output.println("Existing participants receive replacement wording; late participants "
+                + "receive their first assignment.");
         output.println("Pair requests are accepted by their recipient in that user's private chat.");
         output.println("Use /start to view buttons; earlier assignment keyboards remain clickable by keyboard number.");
         output.println("Each user ID represents a separate simulated private chat.");
