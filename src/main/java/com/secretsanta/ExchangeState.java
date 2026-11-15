@@ -15,10 +15,32 @@ record ExchangeState(
         long drawGeneration,
         List<Assignment> assignments,
         Set<Long> deliveredUserIds,
-        Set<Long> confirmedUserIds) {
+        Set<Long> confirmedUserIds,
+        Set<Long> firstAssignmentUserIds) {
     private static final int MAX_PARTICIPANTS = 10_000;
     private static final int MAX_NAME_CODE_POINTS = 64;
     private static final int MAX_INVITE_CODE_CODE_POINTS = 256;
+
+    ExchangeState(
+            Phase phase,
+            String inviteCode,
+            List<Participant> participants,
+            List<PairRequest> pairRequests,
+            long drawGeneration,
+            List<Assignment> assignments,
+            Set<Long> deliveredUserIds,
+            Set<Long> confirmedUserIds) {
+        this(
+                phase,
+                inviteCode,
+                participants,
+                pairRequests,
+                drawGeneration,
+                assignments,
+                deliveredUserIds,
+                confirmedUserIds,
+                Set.of());
+    }
 
     enum Phase {
         EMPTY,
@@ -79,6 +101,8 @@ record ExchangeState(
                 deliveredUserIds, "Delivery progress is required."));
         confirmedUserIds = Set.copyOf(Objects.requireNonNull(
                 confirmedUserIds, "Receipt confirmations are required."));
+        firstAssignmentUserIds = Set.copyOf(Objects.requireNonNull(
+                firstAssignmentUserIds, "First-assignment progress is required."));
         if ((phase == Phase.REGISTRATION_OPEN || phase == Phase.LATE_REGISTRATION_OPEN)
                 && inviteCode != null) {
             inviteCode = inviteCode.strip();
@@ -86,7 +110,8 @@ record ExchangeState(
 
         if (participants.size() > MAX_PARTICIPANTS
                 || pairRequests.size() > MAX_PARTICIPANTS
-                || assignments.size() > MAX_PARTICIPANTS) {
+                || assignments.size() > MAX_PARTICIPANTS
+                || firstAssignmentUserIds.size() > MAX_PARTICIPANTS) {
             throw new IllegalArgumentException("Exchange state is too large.");
         }
         if (drawGeneration < 0) {
@@ -105,6 +130,7 @@ record ExchangeState(
                 assignments,
                 deliveredUserIds,
                 confirmedUserIds,
+                firstAssignmentUserIds,
                 participantsById);
     }
 
@@ -171,6 +197,7 @@ record ExchangeState(
             List<Assignment> assignments,
             Set<Long> deliveredUserIds,
             Set<Long> confirmedUserIds,
+            Set<Long> firstAssignmentUserIds,
             Map<Long, Participant> participantsById) {
         if (phase == Phase.EMPTY) {
             if (inviteCode != null
@@ -179,7 +206,8 @@ record ExchangeState(
                     || drawGeneration != 0
                     || !assignments.isEmpty()
                     || !deliveredUserIds.isEmpty()
-                    || !confirmedUserIds.isEmpty()) {
+                    || !confirmedUserIds.isEmpty()
+                    || !firstAssignmentUserIds.isEmpty()) {
                 throw new IllegalArgumentException("Empty exchange state contains data.");
             }
             return;
@@ -197,7 +225,8 @@ record ExchangeState(
                     || drawGeneration != 0
                     || !assignments.isEmpty()
                     || !deliveredUserIds.isEmpty()
-                    || !confirmedUserIds.isEmpty()) {
+                    || !confirmedUserIds.isEmpty()
+                    || !firstAssignmentUserIds.isEmpty()) {
                 throw new IllegalArgumentException("Open registration state is invalid.");
             }
             return;
@@ -209,7 +238,8 @@ record ExchangeState(
                     || drawGeneration != 0
                     || !assignments.isEmpty()
                     || !deliveredUserIds.isEmpty()
-                    || !confirmedUserIds.isEmpty()) {
+                    || !confirmedUserIds.isEmpty()
+                    || !firstAssignmentUserIds.isEmpty()) {
                 throw new IllegalArgumentException("Closed registration state is invalid.");
             }
             return;
@@ -236,7 +266,10 @@ record ExchangeState(
                 .collect(java.util.stream.Collectors.toSet());
         if (!giverIds.containsAll(deliveredUserIds)
                 || !giverIds.containsAll(confirmedUserIds)
-                || !deliveredUserIds.containsAll(confirmedUserIds)) {
+                || !deliveredUserIds.containsAll(confirmedUserIds)
+                || !giverIds.containsAll(firstAssignmentUserIds)
+                || (phase != Phase.DELIVERING && !firstAssignmentUserIds.isEmpty())
+                || (!firstAssignmentUserIds.isEmpty() && drawGeneration == 1)) {
             throw new IllegalArgumentException("Draw delivery or confirmation state is invalid.");
         }
         if (lateRegistration && !deliveredUserIds.equals(giverIds)) {

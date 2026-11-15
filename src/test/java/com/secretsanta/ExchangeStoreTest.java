@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -14,6 +16,10 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
+import javax.crypto.Cipher;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -106,6 +112,35 @@ class ExchangeStoreTest {
         store.save(state);
 
         assertEquals(state, store.load().orElseThrow());
+    }
+
+    @Test
+    void encryptsAndReloadsFirstAssignmentRecipients() throws Exception {
+        ExchangeStore store = new ExchangeStore(dataDirectory, KEY);
+        ExchangeState original = sampleState();
+        ExchangeState state = new ExchangeState(
+                ExchangeState.Phase.DELIVERING,
+                null,
+                original.participants(),
+                List.of(),
+                2,
+                original.assignments(),
+                original.deliveredUserIds(),
+                Set.of(),
+                Set.of(104L));
+
+        store.save(state);
+
+        assertEquals(state, store.load().orElseThrow());
+    }
+
+    @Test
+    void loadsVersionOneStateWithoutFirstAssignmentMetadata() throws Exception {
+        ExchangeStore store = new ExchangeStore(dataDirectory, KEY);
+        ExchangeState legacyState = sampleState();
+        writeVersionOneState(store, legacyState);
+
+        assertEquals(legacyState, store.load().orElseThrow());
     }
 
     @Test
@@ -234,6 +269,63 @@ class ExchangeStoreTest {
                         new ExchangeState.Assignment(104L, 101L)),
                 Set.of(101L),
                 Set.of());
+    }
+
+    private static void writeVersionOneState(ExchangeStore store, ExchangeState state)
+            throws Exception {
+        ByteArrayOutputStream plaintext = new ByteArrayOutputStream();
+        try (DataOutputStream output = new DataOutputStream(plaintext)) {
+            output.writeInt(1);
+            output.writeByte(state.phase().ordinal());
+            output.writeBoolean(state.inviteCode() != null);
+            if (state.inviteCode() != null) {
+                output.writeUTF(state.inviteCode());
+            }
+
+            output.writeInt(state.participants().size());
+            for (ExchangeState.Participant participant : state.participants()) {
+                output.writeLong(participant.userId());
+                output.writeUTF(participant.name());
+                output.writeBoolean(participant.partnerId() != null);
+                if (participant.partnerId() != null) {
+                    output.writeLong(participant.partnerId());
+                }
+            }
+
+            output.writeInt(state.pairRequests().size());
+            for (ExchangeState.PairRequest request : state.pairRequests()) {
+                output.writeLong(request.requesterId());
+                output.writeLong(request.requestedPartnerId());
+            }
+
+            output.writeLong(state.drawGeneration());
+            output.writeInt(state.assignments().size());
+            for (ExchangeState.Assignment assignment : state.assignments()) {
+                output.writeLong(assignment.giverId());
+                output.writeLong(assignment.receiverId());
+            }
+            writeIds(output, state.deliveredUserIds());
+            writeIds(output, state.confirmedUserIds());
+        }
+
+        byte[] nonce = new byte[12];
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(
+                Cipher.ENCRYPT_MODE,
+                new SecretKeySpec(KEY, "AES"),
+                new GCMParameterSpec(128, nonce));
+        byte[] ciphertext = cipher.doFinal(plaintext.toByteArray());
+        ByteBuffer fileContents = ByteBuffer.allocate(Integer.BYTES + nonce.length + ciphertext.length);
+        fileContents.putInt(0x53534558).put(nonce).put(ciphertext);
+        Files.write(store.stateFile(), fileContents.array());
+    }
+
+    private static void writeIds(DataOutputStream output, Set<Long> ids) throws IOException {
+        TreeSet<Long> sortedIds = new TreeSet<>(ids);
+        output.writeInt(sortedIds.size());
+        for (long id : sortedIds) {
+            output.writeLong(id);
+        }
     }
 
     private static byte[] differentKey() {

@@ -371,6 +371,13 @@ final class ExchangeService {
             throw new IllegalStateException(
                     "A replacement draw requires every current assignment to be delivered.");
         }
+        Set<Long> currentGiverIds = state.assignments().stream()
+                .map(ExchangeState.Assignment::giverId)
+                .collect(java.util.stream.Collectors.toSet());
+        Set<Long> firstAssignmentUserIds = state.participants().stream()
+                .map(ExchangeState.Participant::userId)
+                .filter(userId -> !currentGiverIds.contains(userId))
+                .collect(java.util.stream.Collectors.toSet());
         persist(new ExchangeState(
                 ExchangeState.Phase.DELIVERING,
                 null,
@@ -379,7 +386,8 @@ final class ExchangeService {
                 state.drawGeneration() + 1,
                 assignments,
                 Set.of(),
-                Set.of()));
+                Set.of(),
+                firstAssignmentUserIds));
         organizerService.closeRegistration();
     }
 
@@ -457,7 +465,10 @@ final class ExchangeService {
                 state.drawGeneration(),
                 state.assignments(),
                 deliveredUserIds,
-                state.confirmedUserIds()));
+                state.confirmedUserIds(),
+                phase == ExchangeState.Phase.AWAITING_CONFIRMATIONS
+                        ? Set.of()
+                        : state.firstAssignmentUserIds()));
     }
 
     synchronized boolean confirmReceipt(long participantId, long drawGeneration)

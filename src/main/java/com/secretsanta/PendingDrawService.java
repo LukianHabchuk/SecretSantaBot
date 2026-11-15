@@ -151,7 +151,11 @@ final class PendingDrawService {
                 telegramMessenger.sendMessage(
                         assignment.giverId(),
                         assignmentMessage(
-                                language, participantNames.get(assignment.receiverId()), replacement),
+                                language,
+                                participantNames.get(assignment.receiverId()),
+                                replacement
+                                        && !state.firstAssignmentUserIds().contains(
+                                                assignment.giverId())),
                         BotButtons.localize(language,
                                 BotButtons.assignmentReceived(state.drawGeneration())));
             } catch (TelegramApiException exception) {

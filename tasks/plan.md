@@ -172,6 +172,10 @@ first-assignment wording.
   original roster, which is a subset of the expanded participant roster. Do
   not deliver or expose any assignment to a late participant until the full
   replacement is persisted.
+- Persist which recipients are receiving their first assignment in the
+  replacement generation so private delivery wording remains correct across
+  retries and restarts. Read existing version-1 encrypted states with empty
+  first-assignment metadata.
 - Reuse the existing assignment generator, explicit replacement confirmation,
   per-recipient private delivery, and same-generation retry behavior. Preserve
   accepted pairs; do not add a dependency or external service.

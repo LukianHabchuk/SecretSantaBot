@@ -26,7 +26,7 @@ import javax.crypto.spec.SecretKeySpec;
 
 final class ExchangeStore {
     private static final int MAGIC = 0x53534558;
-    private static final int VERSION = 1;
+    private static final int VERSION = 2;
     private static final int NONCE_LENGTH = 12;
     private static final int TAG_LENGTH_BITS = 128;
     private static final int MAX_ENTRIES = 10_000;
@@ -179,13 +179,15 @@ final class ExchangeStore {
             }
             writeIds(output, state.deliveredUserIds());
             writeIds(output, state.confirmedUserIds());
+            writeIds(output, state.firstAssignmentUserIds());
         }
         return bytes.toByteArray();
     }
 
     private static ExchangeState decode(byte[] plaintext) throws IOException {
         try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(plaintext))) {
-            if (input.readInt() != VERSION) {
+            int version = input.readInt();
+            if (version < 1 || version > VERSION) {
                 throw new IOException("Persisted exchange state version is unsupported.");
             }
             int phaseOrdinal = input.readUnsignedByte();
@@ -221,6 +223,7 @@ final class ExchangeStore {
             }
             Set<Long> deliveredUserIds = readIds(input);
             Set<Long> confirmedUserIds = readIds(input);
+            Set<Long> firstAssignmentUserIds = version >= 2 ? readIds(input) : Set.of();
             if (input.available() != 0) {
                 throw new IOException("Persisted exchange state contains unexpected data.");
             }
@@ -233,7 +236,8 @@ final class ExchangeStore {
                     drawGeneration,
                     assignments,
                     deliveredUserIds,
-                    confirmedUserIds);
+                    confirmedUserIds,
+                    firstAssignmentUserIds);
         } catch (IllegalArgumentException exception) {
             throw new IOException("Persisted exchange state data is invalid.", exception);
         }

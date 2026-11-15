@@ -525,34 +525,40 @@ a full assignment set for the expanded roster, close late enrollment, and
 deliver to every participant. Preserve the existing pairing constraints and
 same-generation retry guarantees.
 
+**Status:** Complete.
+
 **Acceptance criteria:**
-- [ ] Replacement is unavailable until prior delivery is complete and creates
+- [x] Replacement is unavailable until prior delivery is complete and creates
   a valid one-to-one draw for every current participant.
-- [ ] The complete next generation is persisted before any message; successful
+- [x] The complete next generation is persisted before any message; successful
   replacement closes registration and clears old confirmations.
-- [ ] Existing participants receive replacement wording; late joiners receive
+- [x] Existing participants receive replacement wording; late joiners receive
   first-assignment wording; each sees only their own assignment.
-- [ ] Failures and restarts retry the persisted generation without mixing or
+- [x] Failures and restarts retry the persisted generation without mixing or
   redrawing assignments.
 
 **Verification:**
-- [ ] `mvn -Dtest=PendingDrawServiceTest test`
-- [ ] Tests cover private delivery, pairing constraints, persistence failure,
+- [x] `mvn -Dtest=PendingDrawServiceTest test`
+- [x] Tests cover private delivery, pairing constraints, persistence failure,
   partial delivery, and restart retry with a late participant.
 
 **Dependencies:** Task 21
 
 **Files likely touched:**
+- `src/main/java/com/secretsanta/ExchangeState.java`
 - `src/main/java/com/secretsanta/ExchangeService.java`
+- `src/main/java/com/secretsanta/ExchangeStore.java`
 - `src/main/java/com/secretsanta/PendingDrawService.java`
+- `src/test/java/com/secretsanta/ExchangeStateTest.java`
+- `src/test/java/com/secretsanta/ExchangeStoreTest.java`
 - `src/test/java/com/secretsanta/PendingDrawServiceTest.java`
 
 **Estimated scope:** Medium
 
 ## Checkpoint: Late Enrollment Domain and Delivery
-- [ ] Late enrollment survives encrypted restart and retains the old draw.
-- [ ] Confirmed replacement includes the late participant and safely retries.
-- [ ] Focused domain and delivery tests pass.
+- [x] Late enrollment survives encrypted restart and retains the old draw.
+- [x] Confirmed replacement includes the late participant and safely retries.
+- [x] Focused domain and delivery tests pass.
 - [ ] Human reviews the domain and delivery slice before UI work.
 
 ## Task 23: Preventing `/run` from bypassing replacement confirmation
